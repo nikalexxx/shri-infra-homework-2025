@@ -11,7 +11,7 @@ export const About: React.FC = () => {
       <div className="row">
         <div className="col">
           <h1>About</h1>
-          <p>Author: Жадан Владислав</p>
+          <p>Author: Жадан Владислав Андреевич</p>
         </div>
       </div>
     </div>
