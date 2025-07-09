@@ -38,6 +38,9 @@ jobs:
           git push origin v${RELEASE_VERSION}
       - name: Create GitHub Issue
         run: |
-          gh issue create --title "Release v${RELEASE_VERSION}" --body "Дата: $(date)\nАвтор: ${{ github.actor }}\nВерсия: ${RELEASE_VERSION}\nDocker: cr.yandex/${{ env.YC_CR_REGISTRY }}/app:${RELEASE_VERSION}"
+          gh issue create --title "Release v${RELEASE_VERSION}" --body "Дата: $(date)
+Автор: ${{ github.actor }}
+Версия: ${RELEASE_VERSION}
+Docker: cr.yandex/${{ env.YC_CR_REGISTRY }}/app:${RELEASE_VERSION}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
