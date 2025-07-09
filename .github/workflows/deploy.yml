@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Comment to Issue
         run: |
-          gh issue comment $(gh issue list --search "Release v${{ github.event.inputs.release_version }}" --json number --jq '.[0].number') --body "Релиз выкачен в прод: $(date)
-Автор: ${{ github.actor }}"
+          gh issue comment $(gh issue list --search "Release v${{ github.event.inputs.release_version }}" --json number --jq '.[0].number') \
+            --body $'Релиз выкачен в прод: '"$(date)"$'\nАвтор: '"${{ github.actor }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
