@@ -28,6 +28,7 @@ jobs:
             docker stop shri-infra || true
             docker rm shri-infra || true
             docker run -d --name shri-infra -p 3000:3000 cr.yandex/${{ secrets.YC_CR_REGISTRY }}/app:${{ github.event.inputs.release_version }}_latest
+      - uses: actions/checkout@v4
       - name: Comment to Issue
         run: |
           gh issue comment $(gh issue list --search "Release v${{ github.event.inputs.release_version }}" --json number --jq '.[0].number') --body "Релиз выкачен в прод: $(date)\nАвтор: ${{ github.actor }}"
