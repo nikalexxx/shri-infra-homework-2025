@@ -1,0 +1,36 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Release version"
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      YC_CR_REGISTRY: ${{ secrets.YC_CR_REGISTRY }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}
+      RELEASE_VERSION: ${{ github.event.inputs.release_version }}
+    steps:
+      - name: Проверить наличие образа
+        run: |
+          echo "Проверьте вручную, что образ cr.yandex/${{ env.YC_CR_REGISTRY }}/app:${RELEASE_VERSION}_latest есть в Container Registry"
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 84.201.151.208
+          username: ubuntu
+          key: ${{ env.SSH_KEY }}
+          script: |
+            docker pull cr.yandex/${{ env.YC_CR_REGISTRY }}/app:${RELEASE_VERSION}_latest
+            docker stop shri-infra || true
+            docker rm shri-infra || true
+            docker run -d --name shri-infra -p 3000:3000 cr.yandex/${{ env.YC_CR_REGISTRY }}/app:${RELEASE_VERSION}_latest
+      - name: Comment to Issue
+        run: |
+          gh issue comment $(gh issue list --search "Release v${RELEASE_VERSION}" --json number --jq '.[0].number') --body "Релиз выкачен в прод: $(date)\nАвтор: ${{ github.actor }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
