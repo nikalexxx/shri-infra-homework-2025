@@ -1,0 +1,48 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия релиза'
+        required: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+      VERSION: ${{ github.event.inputs.version }}
+      FIX: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - run: npm ci
+      - run: npm run test
+
+      - name: Build Docker (Fix)
+        run: docker build -t $REGISTRY:${VERSION}_fix${FIX} -t $REGISTRY:${VERSION}_latest .
+
+      - name: Login to Registry
+        run: echo "${{ secrets.YC_SERVICE_KEY }}" > key.json && \
+             docker login --username oauth --password-stdin cr.yandex <<< "$(cat key.json | jq -r .access_token)"
+
+      - name: Push Docker images
+        run: |
+          docker push $REGISTRY:${VERSION}_fix${FIX}
+          docker push $REGISTRY:${VERSION}_latest
+
+      - name: Git tag fix
+        run: |
+          git tag ${VERSION}_fix${FIX}
+          git push origin ${VERSION}_fix${FIX}
+
+      - name: Append to issue
+        run: |
+          gh issue comment <номер_релизного_issue> \
+            --body "**Фикс от $(date)**\nАвтор: ${{ github.actor }}\nDocker: $REGISTRY:${VERSION}_fix${FIX}"

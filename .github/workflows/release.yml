@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+      REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+      - name: Create release branch
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "ci@example.com"
+          git checkout -b releases/${VERSION}
+          git push origin releases/${VERSION}
+
+      - name: Build Docker
+        run: docker build -t $REGISTRY:${VERSION} -t $REGISTRY:${VERSION}_latest .
+
+      - name: Login to Yandex Container Registry
+        run: echo "${{ secrets.YC_SERVICE_KEY }}" > key.json && \
+             docker login --username oauth --password-stdin cr.yandex <<< "$(cat key.json | jq -r .access_token)"
+
+      - name: Push Docker images
+        run: |
+          docker push $REGISTRY:${VERSION}
+          docker push $REGISTRY:${VERSION}_latest
+
+      - name: Create git tag
+        run: |
+          git tag ${VERSION}
+          git push origin ${VERSION}
+
+      - name: Generate commit list
+        id: changelog
+        run: |
+          git fetch --tags
+          PREV=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | head -n1)
+          git log $PREV..HEAD --oneline > commits.txt
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          cat commits.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create issue
+        run: |
+          gh issue create \
+            --title "Release $VERSION" \
+            --body "**Дата:** $(date)\n**Автор:** ${{ github.actor }}\n**Версия:** $VERSION\n\n**Коммиты:**\n${{ env.COMMITS }}\n\nDocker: $REGISTRY:$VERSION"
