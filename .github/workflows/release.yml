@@ -1,52 +1,135 @@
-name: Release
-
+name: Create Release
 on:
   workflow_dispatch:
 
+env:
+  APP_NAME: app
+  REGISTRY_HOST: cr.yandex
+  REGISTRY_ID: ${{ secrets.REESTR_ID }}
+
 jobs:
-  release:
+  # 1. Проверки
+  lint-test:
+    name: Lint & Test
+    uses: ./.github/actions/lint-and-test
+
+  # 2. Сборка и пуш Docker
+  build-and-push:
+    name: Build & Push Docker
+    needs: lint-test
     runs-on: ubuntu-latest
-
+    env:
+      VERSION: ${{ github.run_number }}
     steps:
-      - name: Checkout репозитория
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Настройка Docker Buildx
+      - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Сборка Docker-образа
+      - name: Login to Yandex Container Registry
+        run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin ${REGISTRY_HOST}
+
+      - name: Build & Tag image
         run: |
-          docker build -t cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }} .
-          docker tag cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }} cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest
-
-      - name: Логин в Yandex Container Registry
-        run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
-
-      - name: Push Docker-образа в YCR
+          docker build \
+            -t ${REGISTRY_HOST}/${REGISTRY_ID}/${APP_NAME}:${VERSION} \
+            -t ${REGISTRY_HOST}/${REGISTRY_ID}/${APP_NAME}:${VERSION}_latest \
+            .
+      - name: Push images
         run: |
-          docker push cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}
-          docker push cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest
+          docker push ${REGISTRY_HOST}/${REGISTRY_ID}/${APP_NAME}:${VERSION}
+          docker push ${REGISTRY_HOST}/${REGISTRY_ID}/${APP_NAME}:${VERSION}_latest
 
-      - name: Деплой по SSH
-        uses: appleboy/ssh-action@master
+  # 3. Создание релизной ветки
+  release-branch:
+    name: Create Release Branch
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create branch releases/<version>
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b releases/${VERSION}
+          git push origin releases/${VERSION}
+
+  # 4. Тег и Changelog
+  tag-and-changelog:
+    name: Tag & Update Changelog
+    needs: release-branch
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch all tags
+        run: git fetch --tags
+      - name: Create Git tag
+        run: |
+          git tag ${VERSION}
+          git push origin ${VERSION}
+      - name: Generate changelog entry
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 ${VERSION}^ || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          COMMITS=$(git log $RANGE --pretty=format:'- %s (%an)' )
+          DATE=$(date -u +"%Y-%m-%d")
+          echo -e "## ${VERSION} (${DATE})\n\n${COMMITS}\n" > new_changelog.md
+      - name: Prepend to CHANGELOG.md
+        run: |
+          cat new_changelog.md CHANGELOG.md > CHANGELOG.tmp
+          mv CHANGELOG.tmp CHANGELOG.md
+      - name: Commit CHANGELOG.md
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore: update CHANGELOG for release ${VERSION}"
+          git push origin releases/${VERSION}
+
+  # 5. Создание Issue
+  create-issue:
+    name: Create GitHub Issue
+    needs: tag-and-changelog
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+      APP: ${{ env.APP_NAME }}
+      REG: ${{ env.REGISTRY_HOST }}/${{ env.REGISTRY_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare issue body
+        run: |
+          DATE=$(date -u +"%Y-%m-%d")
+          PREV_TAG=$(git describe --tags --abbrev=0 ${VERSION}^ || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            LOG=$(git log $PREV_TAG..HEAD --pretty=format:'- %s (%an)')
+          else
+            LOG=$(git log --pretty=format:'- %s (%an)')
+          fi
+          cat <<EOF > .github/release-issue.md
+          **Release**: ${VERSION}
+          **Date**: ${DATE} UTC
+          **Author**: @${{ github.actor }}
+
+          **Commits:**
+          ${LOG}
+
+          **Docker images:**
+          - \`${REG}/${APP}:${VERSION}\`
+          - \`${REG}/${APP}:${VERSION}_latest\`
+          EOF
+      - name: Create Issue
+        uses: peter-evans/create-issue-from-file@v6
         with:
-          host: ${{ secrets.SERVER_IP }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            # Логин в Yandex Container Registry
-            echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
-
-            # Удаление старого контейнера
-            docker stop my_app || true
-            docker rm my_app || true
-
-            # Удаление старого образа с виртуальной машины
-            docker rmi cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }} || true
-            docker rmi cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest || true
-
-            # Скачивание нового образа из YCR
-            docker pull cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest
-
-            # Запускаем контейнер с авто‑рестартом
-            docker run -d --restart always --name my_app -p 80:3000 cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest
+          title: "Release v${{ env.VERSION }}"
+          content-filepath: .github/release-issue.md

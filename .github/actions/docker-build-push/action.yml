@@ -1,0 +1,41 @@
+name: Docker Build & Push
+description: |
+  Собирает Docker-образ и пушит в Yandex Container Registry
+inputs:
+  registry-id:
+    required: true
+  app-name:
+    required: true
+  tags:
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Yandex Registry
+      run: |
+        echo "${{ secrets.YCR_TOKEN }}" \
+          | docker login --username oauth --password-stdin cr.yandex
+
+    - name: Build image (first tag)
+      run: |
+        FIRST_TAG=$(echo "${{ inputs.tags }}" | cut -d' ' -f1)
+        docker build \
+          -t cr.yandex/${{ inputs.registry-id }}/${{ inputs.app-name }}:${FIRST_TAG} \
+          .
+
+    - name: Tag & Push all images
+      run: |
+        FIRST_TAG=$(echo "${{ inputs.tags }}" | cut -d' ' -f1)
+        for TAG in ${{ inputs.tags }}; do
+          docker tag \
+            cr.yandex/${{ inputs.registry-id }}/${{ inputs.app-name }}:${FIRST_TAG} \
+            cr.yandex/${{ inputs.registry-id }}/${{ inputs.app-name }}:$TAG
+          docker push \
+            cr.yandex/${{ inputs.registry-id }}/${{ inputs.app-name }}:$TAG
+        done
