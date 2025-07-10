@@ -100,21 +100,51 @@ jobs:
           fi
           echo "prev_tag=$PREV" >> "$GITHUB_OUTPUT"
 
-      - name: Comment to GitHub Issue
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          issue-number: ${{inputs.issue-number}}
-          body: |
-            gh issue comment 1 --body "$(
-              echo '🔧 **Фикс релиза `${VERSION}`**'
-              echo "📅 Дата фикса: ${{ steps.date.outputs.date }}"
-              echo "👤 Автор: @${{ github.actor }}"
-              echo "🧾 Версия: \`${VERSION}_fix${FIX}\`"
-              echo "📦 Docker образы:"
-              echo "\`${REGISTRY}/${IMAGE_NAME}:${VERSION}_fix${FIX}\`"
-              echo "\`${REGISTRY}/${IMAGE_NAME}:${VERSION}_latest\`"
-              echo "🔍 Коммиты с момента \`${{ steps.prev_tag.outputs.prev_tag }}\`:"
-              echo '```markdown'
-              echo "${{ steps.changelog.outputs.log }}"
-              echo '```'
-            )"
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Добавление комментария в issue
+        run: |
+          set -euo pipefail
+          
+          echo "🔍 Получение номера issue с меткой release_${VERSION}"
+          ISSUE_NUMBER=$(gh issue list --json number --label "release_${VERSION}" | jq -r '.[0].number')
+          
+          if [[ -z "$ISSUE_NUMBER" || "$ISSUE_NUMBER" == "null" ]]; then
+            echo "❌ Issue с меткой release_${VERSION} не найден"
+            exit 1
+          fi
+          
+          TAG="${VERSION}_fix${FIX}"
+          IMAGE_FIX="${REGISTRY}/${IMAGE_NAME}:${TAG}"
+          IMAGE_LATEST="${REGISTRY}/${IMAGE_NAME}:${VERSION}_latest"
+          
+          echo "📜 Формирование списка коммитов от ${PREV_TAG} до HEAD"
+          CHANGELOG=$(git log "${PREV_TAG}..HEAD" --pretty=format:"* %s (%h)")
+          
+          echo "📝 Формирование тела комментария"
+          COMMENT=$(cat <<EOF
+          🔧 **Фикс релиза \`${VERSION}\`**
+          📅 Дата фикса: ${DATE}
+          👤 Автор: @${GITHUB_ACTOR}
+          🧾 Версия: \`${TAG}\`
+          📦 Docker образы:
+            \`${IMAGE_FIX}\`
+            \`${IMAGE_LATEST}\`
+          🔍 Коммиты с момента \`${PREV_TAG}\`:
+            \`\`\`markdown
+            ${CHANGELOG}
+            \`\`\`
+            EOF
+            )
+            
+            echo "💬 Публикация комментария в issue #${ISSUE_NUMBER}"
+            gh issue comment "$ISSUE_NUMBER" --body "$COMMENT"
+        env:
+          VERSION: ${{ env.VERSION }}
+          FIX: ${{ env.FIX }}
+          DATE: ${{ steps.date.outputs.date }}
+          PREV_TAG: ${{ steps.prev_tag.outputs.prev_tag }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          GITHUB_ACTOR: ${{ github.actor }}
