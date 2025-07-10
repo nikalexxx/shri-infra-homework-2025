@@ -75,15 +75,24 @@ jobs:
           git commit -m "chore: update CHANGELOG for v${{ steps.vars.outputs.version }}"
           git push origin changelog/update-v${{ steps.vars.outputs.version }}
 
-      - name: Create pull request to main with changelog
-        uses: peter-evans/create-pull-request@v5
+      - name: Create Pull Request
+        uses: actions/github-script@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore: update CHANGELOG for v${{ steps.vars.outputs.version }}"
-          title: "chore: update CHANGELOG for v${{ steps.vars.outputs.version }}"
-          body: "Автоматическое обновление CHANGELOG.md для релиза v${{ steps.vars.outputs.version }}"
-          base: main
-          branch: changelog/update-v${{ steps.vars.outputs.version }}
+          script: |
+            const changelog_version = `${{ steps.vars.outputs.version }}`;
+            const branch_name = `changelog/update-v${changelog_version}`;
+            const base = 'main';
+            const title = `chore: update CHANGELOG for v${changelog_version}`;
+            const body = `Автоматическое обновление CHANGELOG.md для релиза v${changelog_version}`;
+
+            await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              head: branch_name,
+              base
+            });
 
       - name: Create release branch
         run: |
