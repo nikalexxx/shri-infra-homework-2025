@@ -1,18 +1,18 @@
 name: Manual Release
-
-on:
-  workflow_dispatch:
-
 env:
   REGISTRY: cr.yandex/<идентификатор_реестра>
   IMAGE_NAME: app
   VERSION: ${{ github.run_number }}
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   run: |
-      echo -e "## ${{ env.VERSION }} - ${{ steps.date.outputs.date }}\n\n${{ steps.changelog.outputs.log }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
-      git add CHANGELOG.md
-      git commit -m "chore(release): update changelog for ${{ env.VERSION }}"
-      git push
+    echo -e "## ${{ github.run_number }} - ${{ steps.date.outputs.date }}\n\n${{ steps.changelog.outputs.log }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+    git add CHANGELOG.md
+    git commit -m "chore(release): update changelog for ${{ github.run_number }}"
+    git push
+
+
+on:
+  workflow_dispatch:
   
 
 jobs:
