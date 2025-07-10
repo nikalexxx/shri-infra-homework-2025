@@ -12,7 +12,6 @@ jobs:
         runs-on: ubuntu-latest
         env:
             VERSION: ${{ github.event.inputs.RELEASE_VERSION }}
-            IMAGE: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.RELEASE_VERSION }}_latest
 
         steps:
             - name: Deploy to production server via SSH
@@ -22,6 +21,7 @@ jobs:
                   username: ${{ secrets.PROD_USER }}
                   key: ${{ secrets.PROD_SSH_KEY }}
                   script: |
+                      IMAGE=cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.RELEASE_VERSION }}_latest
                       docker login -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
                       docker pull $IMAGE
                       docker stop app || true
