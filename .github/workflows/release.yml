@@ -93,7 +93,7 @@ jobs:
           node scripts/update-changelog.js
           git add CHANGELOG.md
           git commit -m "Update CHANGELOG for release v${{ env.RELEASE_VERSION }}"
-          git push
+          git push --set-upstream origin releases/${{ env.VERSION }}
         env:
           VERSION: ${{ env.VERSION }}
           DATE: ${{ steps.date.outputs.date }}

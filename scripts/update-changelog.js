@@ -33,3 +33,5 @@ const changelogPath = 'CHANGELOG.md';
 const currentContent = fs.existsSync(changelogPath) ? fs.readFileSync(changelogPath, 'utf-8') : '';
 const newEntry = `## ${VERSION} - ${DATE}\n\n${log}\n\n`;
 fs.writeFileSync(changelogPath, newEntry + currentContent);
+
+
