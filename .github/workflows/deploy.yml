@@ -22,11 +22,11 @@ jobs:
                   key: ${{ secrets.PROD_SSH_KEY }}
                   script: |
                       IMAGE=cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.RELEASE_VERSION }}_latest
-                      docker login -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
-                      docker pull $IMAGE
-                      docker stop app || true
-                      docker rm app || true
-                      docker run -d --name app -p 80:80 $IMAGE
+                      sudo docker login -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
+                      sudo docker pull $IMAGE
+                      sudo docker stop app || true
+                      sudo docker rm app || true
+                      sudo docker run -d --name app -p 80:80 $IMAGE
 
             - name: Find release issue number
               id: issue
