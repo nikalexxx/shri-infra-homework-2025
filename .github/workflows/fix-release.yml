@@ -104,9 +104,10 @@ jobs:
         id: changelog
         run: |
           LOG=$(git log ${{ steps.prev_tag.outputs.prev_tag }}..HEAD --pretty=format:"* %s (%h)")
-          echo "log<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$LOG" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          LOG_ESCAPED="${LOG//'%'/'%25'}"
+          LOG_ESCAPED="${LOG_ESCAPED//$'\n'/'%0A'}"
+          LOG_ESCAPED="${LOG_ESCAPED//$'\r'/'%0D'}"
+          echo "log=$LOG_ESCAPED" >> "$GITHUB_OUTPUT
 
       - name: Comment to GitHub Issue
         run: |
