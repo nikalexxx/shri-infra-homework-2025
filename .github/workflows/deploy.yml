@@ -1,26 +1,43 @@
-name: Deploy to Prod
+name: CI/CD Deploy to Prod
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Версия релиза'
+        description: 'Версия образа'
         required: true
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    steps:
-      - name: Login to Yandex Container Registry
-        run: echo "${{ secrets.YC_CLOUD_OAUTH_TOKEN }}" | docker login -u oauth --password-stdin cr.yandex
 
-      - name: SSH into server and deploy
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Login to Yandex Container Registry
+        uses: yc-actions/yc-cr-login@v1
+        with:
+          key: ${{ secrets.YC_SERVICE_KEY }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest .
+
+      - name: Push Docker image
+        run: |
+          docker push cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+
+      - name: Deploy to VM over SSH
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VM_IP }}
-          username: antsibordaniil
+          username: ${{ secrets.VM_SSH_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
+            yc config set service-account-key ~/sa-key.json
+            echo '${{ secrets.YC_SERVICE_KEY }}' > ~/sa-key.json
+            docker login -u oauth -p $(yc iam create-token) cr.yandex
             docker pull cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
             docker stop app || true
             docker rm app || true
