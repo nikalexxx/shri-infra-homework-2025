@@ -72,8 +72,9 @@ jobs:
       VERSION: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout релизной ветки
-        run: git checkout releases/${VERSION}
+        with:
+          ref: releases/${{ env.VERSION }}
+          fetch-depth: 0
       - name: Fetch all tags
         run: git fetch --tags
       - name: Create Git tag
