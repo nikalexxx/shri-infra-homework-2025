@@ -1,0 +1,56 @@
+name: Deploy prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        type: string
+        required: true
+        description: "Version to release"
+      issue-number:
+        type: number
+        required: true
+        description: "Release Issue number id"
+
+jobs:
+  start_docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run docker container by ssh
+        uses: appleboy/ssh-action@master
+        with:
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          host: ${{ secrets.SSH_HOST }}
+          script: |
+            sudo groupadd docker
+            sudo usermod -aG docker ${USER}
+            echo ${{ secrets.YANDEX_OAUTH }} | docker login --username oauth --password-stdin cr.yandex
+            
+            docker pull cr.yandex/${{secrets.YC_REGISTRY_ID}}/app:${{ inputs.version }}_latest
+            docker kill $(docker ps -q)
+            docker rm $(docker ps -a -q)
+            docker run -d --restart unless-stopped -p 3000:3000 cr.yandex/${{secrets.YC_REGISTRY_ID}}/app:${{ inputs.version }}_latest
+
+      - name: Сформировать тело комментария
+        id: comment_body
+        run: |
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "🔧 **Фикс релиза \`${VERSION}\`**" >> $GITHUB_OUTPUT
+          echo "📅 Дата фикса: ${{ steps.date.outputs.date }}" >> $GITHUB_OUTPUT
+          echo "👤 Автор: @${{ github.actor }}" >> $GITHUB_OUTPUT
+          echo "🧾 Версия: \`${VERSION}_fix${FIX}\`" >> $GITHUB_OUTPUT
+          echo "📦 Docker образы:" >> $GITHUB_OUTPUT
+          echo "\`${REGISTRY}/${IMAGE_NAME}:${VERSION}_fix${FIX}\`" >> $GITHUB_OUTPUT
+          echo "\`${REGISTRY}/${IMAGE_NAME}:${VERSION}_latest\`" >> $GITHUB_OUTPUT
+          echo "🔍 Коммиты с момента \`${{ steps.prev_tag.outputs.prev_tag }}\`:" >> $GITHUB_OUTPUT
+          echo '```markdown' >> $GITHUB_OUTPUT
+          echo "${{ steps.changelog.outputs.log }}" >> $GITHUB_OUTPUT
+          echo '```' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Comment to GitHub Issue
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{inputs.issue-number}}
+          body: ${{ steps.comment_body.outputs.body }}
