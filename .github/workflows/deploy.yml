@@ -15,7 +15,7 @@ jobs:
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VM_IP }}
-          username: yc-user
+          username: antsibordaniil
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             docker pull cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
