@@ -15,7 +15,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_IP }}
-          username: ubuntu
+          username: rahofski
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             docker stop app || true && docker rm app || true
