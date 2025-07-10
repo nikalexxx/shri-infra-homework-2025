@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout репозитория
+        uses: actions/checkout@v3
+
+      - name: Настройка Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Сборка Docker-образа
+        run: |
+          docker build -t cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }} .
+          docker tag cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }} cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest
+
+      - name: Логин в Yandex Container Registry
+        run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+
+      - name: Push Docker-образа в YCR
+        run: |
+          docker push cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}
+          docker push cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest
