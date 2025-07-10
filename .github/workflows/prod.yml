@@ -23,8 +23,6 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           host: ${{ secrets.SSH_HOST }}
           script: |
-            sudo groupadd docker
-            sudo usermod -aG docker ${USER}
             echo ${{ secrets.YANDEX_OAUTH }} | docker login --username oauth --password-stdin cr.yandex
             
             docker pull cr.yandex/${{secrets.YC_REGISTRY_ID}}/app:${{ inputs.version }}_latest
