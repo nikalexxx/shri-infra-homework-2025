@@ -26,3 +26,19 @@ jobs:
         run: |
           docker push cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}
           docker push cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest
+
+      - name: Деплой по SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+
+            docker stop my_app || true
+            docker rm my_app || true
+
+            docker rmi cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest || true
+
+            docker pull cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest
