@@ -77,6 +77,8 @@ jobs:
 
       - name: Create Pull Request
         uses: actions/github-script@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         with:
           script: |
             const changelog_version = `${{ steps.vars.outputs.version }}`;
@@ -94,7 +96,7 @@ jobs:
               base
             });
 
-      - name: Create release branch
+      - name: Make release branch
         run: |
           git checkout -b ${{ steps.vars.outputs.branch }}
           git push origin ${{ steps.vars.outputs.branch }}
