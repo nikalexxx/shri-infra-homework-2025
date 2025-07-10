@@ -160,4 +160,12 @@ jobs:
             });
 
             core.setOutput("issue_number", result.data.number);
+            fs.writeFileSync('release-issue-number.txt', result.data.number.toString());
           result-encoding: string
+
+      # Сохраняем release-issue-number в артефакт, чтобы потом использовать в deploy-prod
+      - name: Upload issue number
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-issue-number
+          path: release-issue-number.txt
