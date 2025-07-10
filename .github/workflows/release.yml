@@ -102,36 +102,42 @@ jobs:
 
   # 5. Создание Issue
   create-issue:
-    name: Create GitHub Issue
     needs: tag-and-changelog
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.run_number }}
-      APP: ${{ env.APP_NAME }}
-      REG: ${{ env.REGISTRY_HOST }}/${{ env.REGISTRY_ID }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Prepare issue body
         run: |
+          # подтягиваем глобальные переменные
+          APP_NAME="${{ env.APP_NAME }}"
+          REGISTRY_HOST="${{ env.REGISTRY_HOST }}"
+          REGISTRY_ID="${{ env.REGISTRY_ID }}"
+          REG="${REGISTRY_HOST}/${REGISTRY_ID}"
           DATE=$(date -u +"%Y-%m-%d")
-          PREV_TAG=$(git describe --tags --abbrev=0 ${VERSION}^ || echo "")
+
+          PREV_TAG=$(git describe --tags --abbrev=0 $VERSION^ 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
             LOG=$(git log $PREV_TAG..HEAD --pretty=format:'- %s (%an)')
           else
             LOG=$(git log --pretty=format:'- %s (%an)')
           fi
+
           cat <<EOF > .github/release-issue.md
-          **Release**: ${VERSION}
-          **Date**: ${DATE} UTC
+          **Release**: $VERSION
+          **Date**: $DATE UTC
           **Author**: @${{ github.actor }}
 
           **Commits:**
-          ${LOG}
+          $LOG
 
           **Docker images:**
-          - \`${REG}/${APP}:${VERSION}\`
-          - \`${REG}/${APP}:${VERSION}_latest\`
+          - \`$REG/$APP_NAME:$VERSION\`
+          - \`$REG/$APP_NAME:${VERSION}_latest\`
           EOF
+
       - name: Create Issue
         uses: peter-evans/create-issue-from-file@v6
         with:
