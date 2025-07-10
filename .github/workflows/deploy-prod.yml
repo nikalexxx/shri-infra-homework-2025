@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Check if image exists
         run: |
-          IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest"
+          IMAGE="cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.event.inputs.version }}_latest"
           docker manifest inspect "$IMAGE" > /dev/null 2>&1 \
             || (echo "Image not found: $IMAGE" && exit 1)
 
@@ -23,10 +23,10 @@ jobs:
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
           script: |
-            docker pull cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+            docker pull cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.event.inputs.version }}_latest
             docker stop app || true
             docker rm app || true
-            docker run -d --name app cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+            docker run -d --name app cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.event.inputs.version }}_latest
 
       - name: Comment on Issue
         uses: peter-evans/create-or-update-comment@v2
