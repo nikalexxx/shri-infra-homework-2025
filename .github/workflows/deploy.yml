@@ -26,7 +26,7 @@ jobs:
                       sudo docker pull $IMAGE
                       sudo docker stop app || true
                       sudo docker rm app || true
-                      sudo docker run -d --name app -p 80:80 $IMAGE
+                      sudo docker run -d --name app -p 80:3000 $IMAGE
 
             - name: Find release issue number
               id: issue
