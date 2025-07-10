@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: cr.yandex/<идентификатор_реестра>
+  REGISTRY: cr.yandex/${{secrets.YC_REGISTRY_ID}}
   IMAGE_NAME: app
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
