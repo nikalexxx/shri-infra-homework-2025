@@ -2,6 +2,8 @@ import React from "react";
 import { Helmet } from "react-helmet";
 import { cn } from "@bem-react/classname";
 
+// Test comment for CI/CD pipeline verification
+
 const bem = cn("About");
 
 export const About: React.FC = () => {
@@ -12,7 +14,7 @@ export const About: React.FC = () => {
         <div className="col">
           <h1>About</h1>
           <p>
-            Author: [Your Name]
+            Author: Azamat Jorayew
           </p>
         </div>
       </div>
