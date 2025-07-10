@@ -2,11 +2,13 @@
   "name": "infra-hw",
   "version": "1.0.0",
   "scripts": {
-    "start": "nodemon ./src/server/index.ts",
+    "start": "nodemon ./src/server/index.ts && webpack --watch",
     "build": "webpack --mode=production --node-env=production",
     "watch": "webpack --watch",
     "test": "jest",
-    "lint": "eslint ./src"
+    "lint": "eslint ./src",
+    "build:docker": "docker image build -t shri-infra:latest .",
+    "start:docker": "docker run -dp 3000:3000 --name shri-infra shri-infra:latest"
   },
   "dependencies": {
     "@bem-react/classname": "^1.6.0",
