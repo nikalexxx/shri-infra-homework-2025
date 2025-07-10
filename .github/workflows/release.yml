@@ -1,131 +1,100 @@
-name: Manual Release Flow
+name: Manual Release
 
 on:
   workflow_dispatch:
 
 env:
-  # Укажи свой идентификатор реестра Yandex Container Registry
-  YC_REGISTRY_ID: "cr.yandex/<идентификатор_реестра>"
-  DOCKER_IMAGE_NAME: "app"
-  GITHUB_OWNER: ${{ github.repository_owner }}
-  GITHUB_REPO: ${{ github.event.repository.name }}
+  REGISTRY: cr.yandex/<идентификатор_реестра>
+  IMAGE_NAME: app
+  VERSION: ${{ github.run_number }}
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  run: |
+      echo -e "## ${{ env.VERSION }} - ${{ steps.date.outputs.date }}\n\n${{ steps.changelog.outputs.log }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+      git add CHANGELOG.md
+      git commit -m "chore(release): update changelog for ${{ env.VERSION }}"
+      git push
+  
 
 jobs:
-  lint-and-tests:
-    name: Lint and Tests
+  lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        job_type: ["lint", "test"]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - name: Run Linter
+        run: npm ci && npm run lint
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Tests
+        run: npm ci && npm test
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run ${{ matrix.job_type }}
-        run: |
-          if [ "${{ matrix.job_type }}" == "lint" ]; then
-            npm run lint
-          else
-            npm run test
-          fi
-
-  release-flow:
-    name: Release Process
-    needs: lint-and-tests
+  release:
+    needs: [lint, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       issues: write
-      statuses: write
-      id-token: write
 
     steps:
-      - name: Set up Git
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Configure Git
+      - name: Get current date
+        id: date
+        run: echo "date=$(date -u +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Create release branch
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-
-      - name: Get current version (run number)
-        id: vars
-        run: echo "VERSION=${{ github.run_number }}" >> $GITHUB_ENV
-
-      - name: Create and push release branch
-        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
           git checkout -b releases/${{ env.VERSION }}
           git push origin releases/${{ env.VERSION }}
 
-      - name: Build Docker image
-        run: |
-          docker build -t $YC_REGISTRY_ID/$DOCKER_IMAGE_NAME:${{ env.VERSION }} \
-                       -t $YC_REGISTRY_ID/$DOCKER_IMAGE_NAME:${{ env.VERSION }}_latest .
-
       - name: Log in to Yandex Container Registry
         run: |
-          yc container docker login --format json > ~/.docker/config.json
+          echo "${{ secrets.YC_CR_TOKEN }}" | docker login -u json_key --password-stdin cr.yandex
 
-      - name: Push Docker images to YCR
+      - name: Build Docker image
         run: |
-          docker push $YC_REGISTRY_ID/$DOCKER_IMAGE_NAME:${{ env.VERSION }}
-          docker push $YC_REGISTRY_ID/$DOCKER_IMAGE_NAME:${{ env.VERSION }}_latest
+          docker build -t $REGISTRY/$IMAGE_NAME:${{ env.VERSION }} .
+          docker tag $REGISTRY/$IMAGE_NAME:${{ env.VERSION }} $REGISTRY/$IMAGE_NAME:${{ env.VERSION }}_latest
 
-      - name: Get previous tag
-        id: prev_tag
+      - name: Push Docker image
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
+          docker push $REGISTRY/$IMAGE_NAME:${{ env.VERSION }}
+          docker push $REGISTRY/$IMAGE_NAME:${{ env.VERSION }}_latest
 
-      - name: Get commit list since last release
-        id: commits
+      - name: Get last release tag
+        id: last_tag
         run: |
-          if [ -z "$PREV_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"%h %s (%an)" HEAD~1..HEAD)
-          else
-            COMMITS=$(git log --pretty=format:"%h %s (%an)" $PREV_TAG..HEAD)
-          fi
-          echo "COMMITS=$(echo "$COMMITS" | sed 's/%/%%/g')" >> $GITHUB_ENV
+          echo "tag=$(git describe --tags --abbrev=0 || echo '')" >> "$GITHUB_OUTPUT"
 
-      - name: Create Git Tag
-        run: |
-          git tag v${{ env.VERSION }}
-          git push origin v${{ env.VERSION }}
-
-      - name: Generate changelog entry
+      - name: Generate changelog
         id: changelog
         run: |
-          DATE=$(date "+%Y-%m-%d")
-          echo "ENTRY=## Version ${{ env.VERSION }} ($DATE)\n\n$(echo \"$COMMITS\" | sed 's/^/- /')\n" >> $GITHUB_ENV
+          if [ -z "${{ steps.last_tag.outputs.tag }}" ]; then
+            log=$(git log --pretty=format:"* %s (%h)")
+          else
+            log=$(git log ${{ steps.last_tag.outputs.tag }}..HEAD --pretty=format:"* %s (%h)")
+          fi
+          echo "log<<EOF" >> $GITHUB_OUTPUT
+          echo "$log" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Update CHANGELOG.md
-        uses: stefanzweifel/git-auto-commit-action@v4
-        with:
-          file_pattern: CHANGELOG.md
-          commit_message: "docs(changelog): add version ${{ env.VERSION }}"
+      - name: Create git tag for release
         run: |
-          # Добавляем новую версию в начало файла
-          awk -v entry="${{ env.ENTRY }}" 'NR == 1 { print entry "\n" } { print }' CHANGELOG.md > tmp && mv tmp CHANGELOG.md
+          git tag ${{ env.VERSION }}
+          git push origin ${{ env.VERSION }}
 
       - name: Create GitHub Issue
-        uses: peter-evans/create-issue-from-template@v2
-        env:
-          VERSION: ${{ env.VERSION }}
-          DATE: $(date "+%Y-%m-%d")
-          AUTHOR: ${{ github.actor }}
-          COMMITS: ${{ env.COMMITS }}
-          DOCKER_IMAGE_URL: $YC_REGISTRY_ID/$DOCKER_IMAGE_NAME:${{ env.VERSION }}
-        with:
-          title: "Release v${{ env.VERSION }}"
-          content-path: .github/ISSUE_TEMPLATE/release_issue_template.md
-          assignees: ${{ github.actor }}
+        run: |
+          gh issue create \
+            --title "Release ${{ env.VERSION }}" \
+            --body "**Дата:** ${{ steps.date.outputs.date }}  
+            **Автор:** ${{ github.actor }}
+            **Версия:** ${{ env.VERSION }}
+            **Образ:** $REGISTRY/$IMAGE_NAME:${{ env.VERSION }}
+            **Коммиты:**
+            ${{ steps.changelog.outputs.log }}" \
+            --repo ${{ github.repository }}
