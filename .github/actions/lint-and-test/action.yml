@@ -17,9 +17,12 @@ runs:
 
     - name: Установка зависимостей
       run: npm ci
+      shell: bash
 
     - name: Запуск lint
       run: npm run lint
+      shell: bash
 
     - name: Запуск tests
       run: npm run test
+      shell: bash
