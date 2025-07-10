@@ -1,0 +1,126 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Версия релиза (например, 1.2.3)'
+        required: true
+
+env:
+  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+  IMAGE_NAME: app
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      fix_number: ${{ steps.fix.outputs.fix_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Определение номера фикса
+        id: fix
+        run: |
+          VERSION="${{ github.event.inputs.release_version }}"
+          LAST_TAG=$(git tag --list "${VERSION}_fix*" --sort=-v:refname | head -n1)
+
+          if [[ -z "$LAST_TAG" ]]; then
+            FIX_NUMBER=1
+          else
+            LAST_NUM=$(echo "$LAST_TAG" | grep -oP 'fix\K[0-9]+')
+            FIX_NUMBER=$((LAST_NUM + 1))
+          fi
+
+          echo "fix_number=$FIX_NUMBER" >> $GITHUB_OUTPUT
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          npm ci
+          npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          npm ci
+          npm test
+
+  release:
+    needs: [ setup, lint, test ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    env:
+      VERSION: ${{ github.event.inputs.release_version }}
+      FIX: ${{ needs.setup.outputs.fix_number }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date -u +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Yandex Cloud CR Login
+        uses: yc-actions/yc-cr-login@v2
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+
+      - name: Build Docker Image with Tags
+        run: |
+          IMAGE="$REGISTRY/$IMAGE_NAME"
+          docker build -t "$IMAGE:${VERSION}_fix${FIX}" -t "$IMAGE:${VERSION}_latest" .
+          docker push "$IMAGE:${VERSION}_fix${FIX}"
+          docker push "$IMAGE:${VERSION}_latest"
+
+      - name: Create Git Tag
+        run: |
+          TAG="v${VERSION}_fix${FIX}"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Get Previous Tag
+        id: prev
+        run: |
+          PREV=$(git tag --list "v${VERSION}_fix*" --sort=-v:refname | grep -v "$TAG" | head -n1)
+          if [ -z "$PREV" ]; then
+            PREV="v${VERSION}"
+          fi
+          echo "prev_tag=$PREV" >> $GITHUB_OUTPUT
+
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          LOG=$(git log ${{ steps.prev.outputs.prev_tag }}..HEAD --pretty=format:"* %s (%h)")
+          echo "log<<EOF" >> $GITHUB_OUTPUT
+          echo "$LOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Comment to GitHub Issue
+        run: |
+          gh issue comment 1 --body "$(cat <<EOF
+          🔧 **Фикс релиза \`${VERSION}\`**
+          📅 Дата фикса: ${{ steps.date.outputs.date }}
+          👤 Автор: @${{ github.actor }}
+          🧾 Версия: \`${VERSION}_fix${FIX}\`
+          📦 Docker образы:
+          \`${REGISTRY}/${IMAGE_NAME}:${VERSION}_fix${FIX}\`
+          \`${REGISTRY}/${IMAGE_NAME}:${VERSION}_latest\`
+        🔍 Коммиты с момента \`${{ steps.prev.outputs.prev_tag }}\`:
+          \`\`\`markdown
+          ${{ steps.changelog.outputs.log }}
+          \`\`\`
+          EOF
+          )"
