@@ -102,12 +102,13 @@ jobs:
 
       - name: Generate Changelog
         id: changelog
+        env:
+          VERSION: ${{ env.VERSION }}
+          FIX: ${{ env.FIX }}
+          PREV_TAG: ${{ steps.prev_tag.outputs.prev_tag }}
         run: |
-          LOG=$(git log ${{ steps.prev_tag.outputs.prev_tag }}..HEAD --pretty=format:"* %s (%h)")
-          LOG_ESCAPED="${LOG//'%'/'%25'}"
-          LOG_ESCAPED="${LOG_ESCAPED//$'\n'/'%0A'}"
-          LOG_ESCAPED="${LOG_ESCAPED//$'\r'/'%0D'}"
-          echo "log=$LOG_ESCAPED" >> "$GITHUB_OUTPUT
+          npm ci
+          node scripts/update-changelog.js
 
       - name: Comment to GitHub Issue
         run: |
