@@ -58,7 +58,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: parseInt(outputs.issue_number),
+              issue_number: ${{ steps.find_issue.outputs.issue_number }},
               body: `Deployed version ${process.env.VERSION}_latest to prod by @${{ github.actor }} on $(date -u +"%Y-%m-%d")`
             });
         env:
