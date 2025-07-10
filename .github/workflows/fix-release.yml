@@ -1,0 +1,48 @@
+name: Fix Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Base release version"
+        required: true
+
+jobs:
+  lint-test:
+    uses: ./.github/actions/lint-and-test
+
+  build-and-push-fix:
+    needs: lint-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine fix number
+        run: |
+          FIX_NO="${{ github.run_number }}"
+          echo "FIX_NO=$FIX_NO" >> $GITHUB_ENV
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+
+      - name: Build & Push Docker (fix)
+        uses: ./.github/actions/docker-build-push
+        with:
+          registry-id: ${{ secrets.YC_REGISTRY_ID }}
+          app-name: app
+          tags: "${{ env.VERSION }}_fix${{ env.FIX_NO }} ${{ env.VERSION }}_latest"
+
+  tag-and-comment:
+    needs: build-and-push-fix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag fix
+        run: |
+          git tag ${VERSION}_fix${FIX_NO}
+          git push origin ${VERSION}_fix${FIX_NO}
+
+      - name: Comment on Issue
+        uses: peter-evans/create-or-update-comment@v2
+        with:
+          issue-number: ${{ fromJson(needs.tag-and-comment.outputs).issue }}
+          body: |
+            **Fix ${{ env.FIX_NO }}** by ${{ github.actor }} on $(date -u +"%Y-%m-%d")
+            Commits:
+            $(git log ${VERSION}${{ needs.lint-test }}...HEAD --oneline)
+            Image: `cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ env.VERSION }}_fix${{ env.FIX_NO }}`
