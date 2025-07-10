@@ -68,7 +68,8 @@ jobs:
 
       - name: Generate changelog
         run: |
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v?[0-9]+(_fix[0-9]+)?$' | sed -n '2p')
+          set -eux
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           echo "Previous tag: $PREV_TAG"
 
           echo -e "## v${{ steps.vars.outputs.version }} - $(date +'%Y-%m-%d')\n" > temp_changelog.md
@@ -97,7 +98,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          COMMITS=$(git log --pretty=format:"- %s" $(git tag --sort=-creatordate | head -n 1)..HEAD || echo "Нет новых коммитов.")
+          set -eux
+          COMMITS=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           BODY="## Релиз v${{ steps.vars.outputs.version }}\n\n**Дата**: $(date +'%Y-%m-%d')\n**Автор**: @${{ github.actor }}\n\n**Коммиты:**\n$COMMITS\n\n**Образы:**\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}_latest"
           echo -e "$BODY" > body.md
           gh issue create --title "Релиз v${{ steps.vars.outputs.version }}" --body-file body.md
