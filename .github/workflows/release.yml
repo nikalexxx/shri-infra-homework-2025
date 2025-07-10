@@ -1,0 +1,98 @@
+name: Release
+
+on:
+    workflow_dispatch:
+
+env:
+    REGISTRY: cr.yandex/crpbg7g9053gq8unec5l/app
+
+jobs:
+    release:
+        name: Release flow
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            issues: write
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Run Linter and Tests in parallel
+              run: |
+                  npm run lint & 
+                  npm run test &
+                  wait
+
+            - name: Set version from GitHub run number
+              run: echo "VERSION=${{ github.run_number }}" >> $GITHUB_ENV
+
+            - name: Create release branch
+              run: |
+                  git fetch origin main
+                  git checkout -b releases/${{ env.VERSION }} origin/main
+                  git push origin releases/${{ env.VERSION }}
+
+            - name: Login to Yandex Container Registry
+              run: echo "${{ secrets.YC_CR_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+
+            - name: Build Docker image
+              run: |
+                  docker build -t $REGISTRY:${{ env.VERSION }} .
+                  docker tag $REGISTRY:${{ env.VERSION }} $REGISTRY:${{ env.VERSION }}_latest
+
+            - name: Push Docker image
+              run: |
+                  docker push $REGISTRY:${{ env.VERSION }}
+                  docker push $REGISTRY:${{ env.VERSION }}_latest
+
+            - name: Create Git tag
+              run: |
+                  git tag ${{ env.VERSION }}
+                  git push origin ${{ env.VERSION }}
+
+            - name: Get previous tag
+              id: prev
+              run: |
+                  git fetch --tags
+                  PREV_TAG=$(git tag --sort=-creatordate | tail -n 2 | head -n 1)
+                  echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
+
+            - name: Get commits since previous tag
+              id: changelog
+              run: |
+                  COMMITS=$(git log ${{ env.PREV_TAG }}..HEAD --pretty=format:'- %s (%an)')
+                  echo "COMMITS<<EOF" >> $GITHUB_ENV
+                  echo "$COMMITS" >> $GITHUB_ENV
+                  echo "EOF" >> $GITHUB_ENV
+
+            - name: Update CHANGELOG.md
+              run: |
+                  echo "## ${{ env.VERSION }} — $(date +'%Y-%m-%d')" > temp.md
+                  echo "${{ env.COMMITS }}" >> temp.md
+                  echo "" >> temp.md
+                  cat CHANGELOG.md >> temp.md || true
+                  mv temp.md CHANGELOG.md
+
+                  git config user.name "GitHub Actions"
+                  git config user.email "actions@github.com"
+                  git add CHANGELOG.md
+                  git commit -m "chore: update CHANGELOG for release ${{ env.VERSION }}"
+                  git push
+
+            - name: Create GitHub Issue with Release Info
+              uses: peter-evans/create-issue-from-file@v5
+              with:
+                  title: "Release ${{ env.VERSION }}"
+                  content-filepath: .github/release-template.md
+                  labels: release
