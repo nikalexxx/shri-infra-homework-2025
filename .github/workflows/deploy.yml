@@ -1,0 +1,45 @@
+name: Deploy
+
+on:
+    workflow_dispatch:
+        inputs:
+            RELEASE_VERSION:
+                description: "Release version"
+                required: true
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        env:
+            VERSION: ${{ github.event.inputs.RELEASE_VERSION }}
+            IMAGE: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.RELEASE_VERSION }}_latest
+
+        steps:
+            - name: Deploy to production server via SSH
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                  host: ${{ secrets.PROD_HOST }}
+                  username: ${{ secrets.PROD_USER }}
+                  key: ${{ secrets.PROD_SSH_KEY }}
+                  script: |
+                      docker login -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
+                      docker pull $IMAGE
+                      docker stop app || true
+                      docker rm app || true
+                      docker run -d --name app -p 80:80 $IMAGE
+
+            - name: Find release issue number
+              id: issue
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  ISSUE_NUMBER=$(gh issue list --state open --search "Release $VERSION" --json number --jq '.[0].number')
+                  echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+
+            - name: Add comment to release issue
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  gh issue comment ${{ steps.issue.outputs.ISSUE_NUMBER }} \
+                    --body "Релиз выкачен в прод: $(date '+%Y-%m-%d %H:%M:%S')
+                  Автор выката: ${{ github.actor }}"
