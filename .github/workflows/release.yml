@@ -1,107 +1,95 @@
 name: Release
 
 on:
-  workflow_dispatch:
+    workflow_dispatch:
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        task: [lint, test]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm ci
-      - run: npm run ${{ matrix.task }}
+    check:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                task: [lint, test]
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+            - run: npm ci
+            - run: npm run ${{ matrix.task }}
 
-  release:
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create release branch
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git checkout -b releases/${{ github.run_number }}
-          git push origin releases/${{ github.run_number }}
-
-      - name: Login to Yandex Container Registry
+    release:
+        needs: check
+        runs-on: ubuntu-latest
         env:
-          YC_CR_REGISTRY: ${{ secrets.YC_CR_REGISTRY }}
-          YC_CR_USER: ${{ secrets.YC_CR_USER }}
-          YC_CR_PASSWORD: ${{ secrets.YC_CR_PASSWORD }}
-        run: |
-          echo $YC_CR_PASSWORD | docker login --username $YC_CR_USER --password-stdin cr.yandex/$YC_CR_REGISTRY
+            VERSION: ${{ github.run_number }}
 
-      - name: Build and push Docker images
-        env:
-          YC_CR_REGISTRY: ${{ secrets.YC_CR_REGISTRY }}
-        run: |
-          docker build -t cr.yandex/$YC_CR_REGISTRY/app:${{ github.run_number }} .
-          docker tag cr.yandex/$YC_CR_REGISTRY/app:${{ github.run_number }} cr.yandex/$YC_CR_REGISTRY/app:${{ github.run_number }}_latest
-          docker push cr.yandex/$YC_CR_REGISTRY/app:${{ github.run_number }}
-          docker push cr.yandex/$YC_CR_REGISTRY/app:${{ github.run_number }}_latest
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Create and push version tag
-        run: |
-          git checkout main
-          git tag ${{ github.run_number }}
-          git push origin ${{ github.run_number }}
+            - name: Create release branch
+              run: |
+                  git checkout -b releases/${VERSION}
+                  git push origin releases/${VERSION}
 
-      - name: Install GitHub CLI
-        run: sudo apt-get install gh -y
+            - name: Login to Yandex Cloud
+              run: |
+                  docker login -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
 
-      - name: Get previous tag and commits
-        id: changelog
-        run: |
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | head -n 2 | tail -n 1)
-          if [ -z "$PREV_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s (%h)" main)
-          else
-            COMMITS=$(git log $PREV_TAG..main --pretty=format:"- %s (%h)")
-          fi
-          echo "commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+            - name: Build and push Docker images
+              run: |
+                  docker build -t cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION} .
+                  docker tag cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION} cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
+                  docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}
+                  docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
 
-      - name: Create GitHub Issue
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          YC_CR_REGISTRY: ${{ secrets.YC_CR_REGISTRY }}
-        run: |
-          gh issue create \
-            --title "Release ${{ github.run_number }}" \
-            --body "Дата: $(date '+%Y-%m-%d %H:%M:%S')
-          Автор релиза: ${{ github.actor }}
-          Номер версии: ${{ github.run_number }}
+            - name: Create and push version tag
+              run: |
+                  git tag ${{ VERSION }}
+                  git push origin ${{ VERSION }}
 
-          Список коммитов:
-          ${{ steps.changelog.outputs.commits }}
+            - name: Get previous tag and commits
+              id: changelog
+              run: |
+                  git fetch --tags
+                  TAG=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | sed -n 2p)
+                  echo "PREV_TAG=$TAG" >> $GITHUB_OUTPUT
+                  if [ -z "$TAG" ]; then
+                    COMMITS=$(git log --pretty=format:"- %s (%h)" main)
+                  else
+                    COMMITS=$(git log $TAG..main --pretty=format:"- %s (%h)")
+                  fi
+                  echo "commits<<EOF" >> $GITHUB_OUTPUT
+                  echo "$COMMITS" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
 
-          Docker-образ: cr.yandex/$YC_CR_REGISTRY/app:${{ github.run_number }}
-          " \
-            --repo ${{ github.repository }}
+            - name: Create GitHub Issue
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  gh issue create \
+                    --title "Release ${{ VERSION }}" \
+                    --body "Дата: $(date '+%Y-%m-%d %H:%M:%S')
+                  Автор релиза: ${{ github.actor }}
+                  Номер версии: ${{ VERSION }}
 
-      - name: Update CHANGELOG.md
-        run: |
-          git checkout releases/${{ github.run_number }}
-          DATE=$(date '+%Y-%m-%d %H:%M:%S')
-          VERSION=${{ github.run_number }}
-          HEADER="## $VERSION — $DATE"
-          COMMITS="${{ steps.changelog.outputs.commits }}"
-          TMPFILE=$(mktemp)
-          echo -e "$HEADER\n$COMMITS\n" > $TMPFILE
-          cat CHANGELOG.md >> $TMPFILE
-          mv $TMPFILE CHANGELOG.md
-          git add CHANGELOG.md
-          git commit -m "chore: update CHANGELOG.md for release ${{ github.run_number }}"
-          git push origin releases/${{ github.run_number }}
+                  Список коммитов:
+                  ${{ steps.changelog.outputs.commits }}
+
+                  Docker-образ: cr.yandex/${{secrets.YC_CR_REGISTRY_ID}}/app:${{ VERSION }}
+                  " \
+                    --repo ${{ github.repository }}
+
+            - name: Update CHANGELOG.md
+              run: |
+                  git checkout releases/${{ VERSION }}
+
+                  DATE="$(date '+%Y-%m-%d %H:%M:%S')"
+                  HEADER="## ${{ VERSION }} — $DATE"
+                  COMMITS="${{ steps.changelog.outputs.commits }}"
+
+                  echo -e "$HEADER\n$COMMITS\n" | cat - CHANGELOG.md > CHANGELOG.tmp
+                  mv CHANGELOG.tmp CHANGELOG.md
+
+                  git add CHANGELOG.md
+                  git commit -m "update CHANGELOG.md for release ${{ VERSION }}"
+                  git push origin releases/${{ VERSION }}
