@@ -28,6 +28,8 @@ jobs:
 
             - name: Create release branch
               run: |
+                  git config user.name "github-actions"
+                  git config user.email "github-actions@github.com"
                   git checkout -b releases/$VERSION
                   git push origin releases/$VERSION
 
@@ -35,10 +37,13 @@ jobs:
               run: |
                   docker login -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
 
-            - name: Build and push Docker images
+            - name: Build Docker images
               run: |
                   docker build -t cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:$VERSION .
                   docker tag cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:$VERSION cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
+
+            - name: Push Docker images
+              run: |
                   docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:$VERSION
                   docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
 
