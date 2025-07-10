@@ -46,6 +46,9 @@ jobs:
       - name: Generate changelog
         run: |
           set -eux
+          git checkout main
+          git pull origin main
+
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           echo "Previous tag: $PREV_TAG"
 
@@ -63,12 +66,17 @@ jobs:
           fi
           mv temp_changelog.md CHANGELOG.md
 
-      - name: Commit updated changelog
+      - name: Commit updated changelog to main
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add CHANGELOG.md
           git commit -m "chore: update CHANGELOG for v${{ steps.vars.outputs.version }}"
+          git push origin main
+
+      - name: Create release branch
+        run: |
+          git checkout -b ${{ steps.vars.outputs.branch }}
           git push origin ${{ steps.vars.outputs.branch }}
 
       - name: Create GitHub Issue with release info
@@ -76,6 +84,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eux
+          git checkout main
+          git pull origin main
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
             COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG"..HEAD)
@@ -85,11 +95,6 @@ jobs:
           BODY="## Релиз v${{ steps.vars.outputs.version }}\n\n**Дата**: $(date +'%Y-%m-%d')\n**Автор**: @${{ github.actor }}\n\n**Коммиты:**\n$COMMITS\n\n**Образы:**\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}_latest"
           echo -e "$BODY" > body.md
           gh issue create --title "Релиз v${{ steps.vars.outputs.version }}" --body-file body.md
-
-      - name: Create release branch
-        run: |
-          git checkout -b ${{ steps.vars.outputs.branch }}
-          git push origin ${{ steps.vars.outputs.branch }}
 
       - name: Auth to registry
         run: echo "${{ secrets.YANDEX_PASSWORD }}" | docker login -u "${{ secrets.YANDEX_USERNAME }}" --password-stdin cr.yandex
@@ -106,5 +111,7 @@ jobs:
 
       - name: Create Git tag
         run: |
+          git checkout main
+          git pull origin main
           git tag v${{ steps.vars.outputs.version }}
           git push origin v${{ steps.vars.outputs.version }}
