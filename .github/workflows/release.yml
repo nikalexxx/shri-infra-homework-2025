@@ -34,11 +34,19 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
+            # Логин в Yandex Container Registry
             echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
 
+            # Удаление старого контейнера
             docker stop my_app || true
             docker rm my_app || true
 
+            # Удаление старого образа с виртуальной машины
+            docker rmi cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }} || true
             docker rmi cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest || true
 
+            # Скачивание нового образа из YCR
             docker pull cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest
+
+            # Запускаем контейнер с авто‑рестартом
+            docker run -d --restart always --name my_app -p 80:3000 cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest
