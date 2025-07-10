@@ -28,7 +28,7 @@ jobs:
           npm test
 
   release:
-    needs: [lint, test]
+    needs: [ lint, test ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -89,12 +89,11 @@ jobs:
 
       - name: Update CHANGELOG.md
         run: |
-          echo -e "## ${{ env.VERSION }} - ${{ steps.date.outputs.date }}\n\n${{ steps.changelog.outputs.log }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add CHANGELOG.md
-          git commit -m "chore(release): update changelog for ${{ env.VERSION }}"
-          git push
+          npm install
+          node scripts/update-changelog.js
+        env:
+          VERSION: ${{ env.VERSION }}
+          DATE: ${{ steps.date.outputs.date }}
 
       - name: Create GitHub Issue
         run: |
