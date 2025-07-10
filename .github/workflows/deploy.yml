@@ -26,7 +26,10 @@ jobs:
 
       - name: Push Docker image
         run: |
-          docker push cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+            docker push \
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/ubuntu:hello
+            docker run \
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/ubuntu:hello
 
       - name: Deploy to VM over SSH
         uses: appleboy/ssh-action@v0.1.7
