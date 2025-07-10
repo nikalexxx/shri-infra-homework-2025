@@ -143,8 +143,15 @@ jobs:
           - \`$REG/$APP_NAME:${VERSION}_latest\`
           EOF
 
-      - name: Create Issue
-        uses: peter-evans/create-issue-from-file@latest
+      - name: Comment on Issue (GH API)
+        uses: actions/github-script@v7
         with:
-          title: "Release v${{ env.VERSION }}"
-          content-filepath: .github/release-issue.md
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('comment.md', 'utf8');  // или задайте inline
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ env.ISSUE_NUMBER }},
+              body
+            });
