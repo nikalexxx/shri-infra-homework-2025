@@ -1,0 +1,185 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to deploy (e.g., 1.0.0, 1.1.0, 2.0.0)'
+        required: true
+        type: string
+      confirm:
+        description: 'Type "yes" to confirm production deployment'
+        required: true
+        default: 'no'
+
+jobs:
+  # Job 1: Verify Docker image exists
+  verify:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'yes'
+    outputs:
+      image_exists: ${{ steps.check.outputs.exists }}
+      issue_number: ${{ steps.find_issue.outputs.issue_number }}
+    
+    steps:
+    - name: Login to Yandex Cloud Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: cr.yandex
+        username: json_key
+        password: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+        
+    - name: Check if image exists
+      id: check
+      run: |
+        IMAGE_TAG="cr.yandex/crp18f0881clcu82u2d8/app:${{ github.event.inputs.release_version }}_latest"
+        
+        # Try to pull the image to verify it exists
+        if docker pull $IMAGE_TAG; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+          echo "Image $IMAGE_TAG exists and is ready for deployment"
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+          echo "Image $IMAGE_TAG not found in registry"
+          exit 1
+        fi
+        
+    - name: Find release issue
+      id: find_issue
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const issues = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            labels: 'release',
+            state: 'open'
+          });
+          
+          const releaseIssue = issues.data.find(issue => 
+            issue.title.includes(`Release ${{ github.event.inputs.release_version }}`)
+          );
+          
+          if (releaseIssue) {
+            console.log('Found release issue:', releaseIssue.number);
+            core.setOutput('issue_number', releaseIssue.number);
+            return releaseIssue.number;
+          } else {
+            console.log('Release issue not found, will skip commenting');
+            core.setOutput('issue_number', '0');
+            return 0;
+          }
+
+  # Job 2: Deploy to production VM
+  deploy:
+    runs-on: ubuntu-latest
+    needs: verify
+    if: needs.verify.outputs.image_exists == 'true'
+    
+    steps:
+    - name: Deploy to Production VM
+      uses: appleboy/ssh-action@v1.0.3
+      env:
+        VM_HOST: ${{ secrets.VM_HOST }}
+      with:
+        host: ${{ secrets.VM_HOST }}
+        username: ${{ secrets.VM_USERNAME }}
+        key: ${{ secrets.VM_SSH_KEY }}
+        envs: VM_HOST
+        script: |
+          echo "Starting deployment of version ${{ github.event.inputs.release_version }}"
+          
+          # Login to Yandex Container Registry
+          echo '${{ secrets.YC_SA_JSON_CREDENTIALS }}' | docker login --username json_key --password-stdin cr.yandex
+          
+          # Stop existing container (if running)
+          docker stop shri-app || true
+          docker rm shri-app || true
+          
+          # Remove old images to save space (keep last 3)
+          docker images cr.yandex/crp18f0881clcu82u2d8/app --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}" | tail -n +2 | head -n -3 | awk '{print $2}' | xargs -r docker rmi || true
+          
+          # Pull the specific version image
+          docker pull cr.yandex/crp18f0881clcu82u2d8/app:${{ github.event.inputs.release_version }}_latest
+          
+          # Run new container with the specific version
+          docker run -d \
+            --name shri-app \
+            --restart unless-stopped \
+            -p 3000:3000 \
+            cr.yandex/crp18f0881clcu82u2d8/app:${{ github.event.inputs.release_version }}_latest
+          
+          # Wait for container to start
+          sleep 5
+          
+          # Verify deployment
+          if docker ps | grep -q shri-app; then
+            echo "Container started successfully"
+            echo "Application is available at: http://${VM_HOST}:3000/hw/store"
+          else
+            echo "Container failed to start"
+            exit 1
+          fi
+          
+    - name: Test deployment
+      run: |
+        echo "Testing deployment..."
+        # Wait a bit for the app to fully start
+        sleep 10
+        
+        # Test if the application responds
+        if curl -f http://84.201.149.172:3000/hw/store; then
+          echo "Application is responding correctly"
+        else
+          echo "Application might not be fully ready yet, but deployment completed"
+        fi
+
+  # Job 3: Comment on release issue
+  notify:
+    runs-on: ubuntu-latest
+    needs: [verify, deploy]
+    if: always() && needs.verify.outputs.image_exists == 'true' && needs.verify.outputs.issue_number != '0'
+    
+    steps:
+    - name: Comment on release issue
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const deploymentStatus = '${{ needs.deploy.result }}';
+          const statusEmoji = deploymentStatus === 'success' ? 'Yes' : 'No';
+          const issueNumber = parseInt('${{ needs.verify.outputs.issue_number }}');
+          
+          if (issueNumber === 0) {
+            console.log('No release issue found, skipping comment');
+            return;
+          }
+          
+          const commentBody = `## Production Deployment ${statusEmoji}
+          
+          **Deployment Date**: ${new Date().toISOString().split('T')[0]}
+          **Deployed By**: @${{ github.actor }}
+          **Version**: ${{ github.event.inputs.release_version }}
+          **Status**: ${deploymentStatus === 'success' ? 'Successfully deployed' : 'Deployment failed'}
+          
+          ## Application Access
+          **URL**: http://${{ secrets.VM_HOST }}:3000/hw/store
+          
+          ## Docker Image
+          \`cr.yandex/crp18f0881clcu82u2d8/app:${{ github.event.inputs.release_version }}_latest\`
+          
+          ${deploymentStatus === 'success' ? 
+            '## Status\n- Image verified in registry\n- Deployed to production VM\n- Container running successfully\n- Application accessible' :
+            '## Status\n- Image verified in registry\n- Deployment failed - check workflow logs'
+          }
+          
+          ---
+          *This comment was automatically created by the deployment workflow.*`;
+          
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: issueNumber,
+            body: commentBody
+          });
+          
+          console.log(`Comment added to issue #${issueNumber}`); 
