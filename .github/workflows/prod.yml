@@ -23,14 +23,17 @@ jobs:
           chmod 600 ~/.ssh/secret_key
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
+      - name: Yandex Cloud CR "Login" Action for GitHub Actions
+        uses: yc-actions/yc-cr-login@v2
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+
       - name: Deploy
         run: |
-          ssh -i ~/.ssh/secret_key ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} <<'EOF'
-            echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
-            docker rm -f ${{ secrets.YC_REGISTRY_ID }} || true
-            docker run --name ${{ secrets.YC_REGISTRY_ID }} -d -p 3000:3000 \
-            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ inputs.version }}_latest
-          EOF
+          ssh -i ~/.ssh/secret_key ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} \
+          "sudo docker rm -f ${{ secrets.YC_REGISTRY_ID }} || true && \
+           sudo docker run --name ${{ secrets.YC_REGISTRY_ID }} -d -p 3000:3000 \
+           cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ inputs.version }}_latest"
 
       - name: Get current date
         id: date
