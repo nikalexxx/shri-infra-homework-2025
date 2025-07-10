@@ -33,15 +33,3 @@ const changelogPath = 'CHANGELOG.md';
 const currentContent = fs.existsSync(changelogPath) ? fs.readFileSync(changelogPath, 'utf-8') : '';
 const newEntry = `## ${VERSION} - ${DATE}\n\n${log}\n\n`;
 fs.writeFileSync(changelogPath, newEntry + currentContent);
-
-// Git-команды
-try {
-    execSync('git config user.name "github-actions"');
-    execSync('git config user.email "github-actions@github.com"');
-    execSync('git add CHANGELOG.md');
-    execSync(`git commit -m "chore(release): update changelog for ${VERSION}"`);
-    execSync(`git push --set-upstream origin releases/${VERSION}`);
-} catch (e) {
-    console.error('Ошибка при git push:', e.message);
-    process.exit(1);
-}

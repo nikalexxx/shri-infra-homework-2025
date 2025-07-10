@@ -89,8 +89,11 @@ jobs:
 
       - name: Update CHANGELOG.md
         run: |
-          npm install
+          npm ci
           node scripts/update-changelog.js
+          git add CHANGELOG.md
+          git commit -m "Update CHANGELOG for release v${{ env.RELEASE_VERSION }}"
+          git push
         env:
           VERSION: ${{ env.VERSION }}
           DATE: ${{ steps.date.outputs.date }}
