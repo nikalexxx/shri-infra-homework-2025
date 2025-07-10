@@ -75,10 +75,8 @@ jobs:
           git commit -m "chore: update CHANGELOG for v${{ steps.vars.outputs.version }}"
           git push origin changelog/update-v${{ steps.vars.outputs.version }}
 
-      - name: Create Pull Request
+      - name: Make Pull Request
         uses: actions/github-script@v6
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         with:
           script: |
             const changelog_version = `${{ steps.vars.outputs.version }}`;
@@ -95,6 +93,8 @@ jobs:
               head: branch_name,
               base
             });
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Make release branch
         run: |
@@ -102,8 +102,6 @@ jobs:
           git push origin ${{ steps.vars.outputs.branch }}
 
       - name: Create GitHub Issue with release info
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -eux
           git checkout main
@@ -117,6 +115,8 @@ jobs:
           BODY="## Релиз v${{ steps.vars.outputs.version }}\n\n**Дата**: $(date +'%Y-%m-%d')\n**Автор**: @${{ github.actor }}\n\n**Коммиты:**\n$COMMITS\n\n**Образы:**\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}_latest"
           echo -e "$BODY" > body.md
           gh issue create --title "Релиз v${{ steps.vars.outputs.version }}" --body-file body.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Auth to registry
         run: echo "${{ secrets.YANDEX_PASSWORD }}" | docker login -u "${{ secrets.YANDEX_USERNAME }}" --password-stdin cr.yandex
