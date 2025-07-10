@@ -25,10 +25,12 @@ jobs:
 
       - name: Deploy
         run: |
-          ssh -i ~/.ssh/secret_key ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} \
-          "sudo docker rm -f ${{ secrets.YC_REGISTRY_ID }} || true && \
-           sudo docker run --name ${{ secrets.YC_REGISTRY_ID }} -d -p 3000:3000 \
-           cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ inputs.version }}_latest"
+          ssh -i ~/.ssh/secret_key ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} <<'EOF'
+            echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+            docker rm -f ${{ secrets.YC_REGISTRY_ID }} || true
+            docker run --name ${{ secrets.YC_REGISTRY_ID }} -d -p 3000:3000 \
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ inputs.version }}_latest
+          EOF
 
       - name: Get current date
         id: date
