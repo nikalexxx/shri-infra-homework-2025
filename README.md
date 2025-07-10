@@ -54,7 +54,7 @@ https://yandex.cloud/ru/docs/compute/quickstart/quick-create-linux#create-vm
 
     - отводит от `main` релизуню ветку `releases/<версия_релиза>`
 
-    - [собирает docker-образ](https://yandex.cloud/ru/docs/container-registry/operations/docker-image/docker-image-create) с двумя тегами тегами:
+    - [собирает docker-образ](https://yandex.cloud/ru/docs/container-registry/operations/docker-image/docker-image-create) с двумя тегами:
         - `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>`
         - `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>_latest`
     
