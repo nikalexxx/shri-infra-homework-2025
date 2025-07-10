@@ -107,24 +107,24 @@ jobs:
       - name: Сформировать тело комментария
         id: comment_body
         run: |
-            BODY=$(cat <<EOF
-            🔧 **Фикс релиза \`${{ env.VERSION }}\`**
+          BODY=$(cat <<EOF
+          🔧 **Фикс релиза \`${{ env.VERSION }}\`**
           📅 Дата фикса: ${{ steps.date.outputs.date }}
           👤 Автор: @${{ github.actor }}
           🧾 Версия: \`${{ env.VERSION }}_fix${{ env.FIX }}\`
           📦 Docker образы:
-            \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_fix${{ env.FIX }}\`
-            \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest\`
+          \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_fix${{ env.FIX }}\`
+          \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest\`
           🔍 Коммиты с момента \`${{ steps.prev_tag.outputs.prev_tag }}\`:
-            \`\`\`markdown
-            ${{ steps.changelog.outputs.log }}
-            \`\`\`
-            EOF
-            )
-            
-            echo "body<<EOF" >> $GITHUB_OUTPUT
-            echo "$BODY" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+          \`\`\`markdown
+          ${{ steps.changelog.outputs.log }}
+          \`\`\`
+          EOF
+          )
+          
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Comment to GitHub Issue
         uses: peter-evans/create-or-update-comment@v4
