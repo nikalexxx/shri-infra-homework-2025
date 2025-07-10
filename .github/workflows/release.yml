@@ -101,7 +101,7 @@ jobs:
 
       - name: Create GitHub Issue with release info
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -eux
           git checkout main
