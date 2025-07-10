@@ -43,29 +43,6 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
-      - name: Create release branch
-        run: |
-          git checkout -b ${{ steps.vars.outputs.branch }}
-          git push origin ${{ steps.vars.outputs.branch }}
-
-      - name: Auth to registry
-        run: echo "${{ secrets.YANDEX_PASSWORD }}" | docker login -u "${{ secrets.YANDEX_USERNAME }}" --password-stdin cr.yandex
-
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }} .
-          docker tag ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }} ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}_latest
-
-      - name: Push Docker image
-        run: |
-          docker push ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}
-          docker push ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}_latest
-
-      - name: Create Git tag
-        run: |
-          git tag v${{ steps.vars.outputs.version }}
-          git push origin v${{ steps.vars.outputs.version }}
-
       - name: Generate changelog
         run: |
           set -eux
@@ -108,3 +85,26 @@ jobs:
           BODY="## Релиз v${{ steps.vars.outputs.version }}\n\n**Дата**: $(date +'%Y-%m-%d')\n**Автор**: @${{ github.actor }}\n\n**Коммиты:**\n$COMMITS\n\n**Образы:**\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}_latest"
           echo -e "$BODY" > body.md
           gh issue create --title "Релиз v${{ steps.vars.outputs.version }}" --body-file body.md
+
+      - name: Create release branch
+        run: |
+          git checkout -b ${{ steps.vars.outputs.branch }}
+          git push origin ${{ steps.vars.outputs.branch }}
+
+      - name: Auth to registry
+        run: echo "${{ secrets.YANDEX_PASSWORD }}" | docker login -u "${{ secrets.YANDEX_USERNAME }}" --password-stdin cr.yandex
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }} .
+          docker tag ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }} ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}_latest
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}
+          docker push ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}_latest
+
+      - name: Create Git tag
+        run: |
+          git tag v${{ steps.vars.outputs.version }}
+          git push origin v${{ steps.vars.outputs.version }}
