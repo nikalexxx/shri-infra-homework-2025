@@ -10,6 +10,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Docker login to YCR
+        run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+
       - name: Check if image exists
         run: |
           IMAGE="cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.event.inputs.version }}_latest"
