@@ -99,7 +99,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eux
-          COMMITS=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG"..HEAD)
+          else
+            COMMITS=$(git log --pretty=format:"- %s")
+          fi
           BODY="## Релиз v${{ steps.vars.outputs.version }}\n\n**Дата**: $(date +'%Y-%m-%d')\n**Автор**: @${{ github.actor }}\n\n**Коммиты:**\n$COMMITS\n\n**Образы:**\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}_latest"
           echo -e "$BODY" > body.md
           gh issue create --title "Релиз v${{ steps.vars.outputs.version }}" --body-file body.md
