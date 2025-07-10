@@ -3,6 +3,10 @@ name: Create Release
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0, 1.1.0, 2.0.0)'
+        required: true
+        type: string
       confirm:
         description: 'Type "yes" to confirm release creation'
         required: true
@@ -50,7 +54,7 @@ jobs:
         
     - name: Set release version
       id: version
-      run: echo "version=${{ github.run_number }}" >> $GITHUB_OUTPUT
+      run: echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
       
     - name: Create release branch
       run: |
@@ -62,7 +66,7 @@ jobs:
     - name: Get commits since last release
       id: commits
       run: |
-        LAST_TAG=$(git tag -l "v*" --sort=-version:refname | head -n 1)
+        LAST_TAG=$(git tag -l "*.*.*" --sort=-version:refname | head -n 1)
         if [ -z "$LAST_TAG" ]; then
           LAST_TAG=$(git rev-list --max-parents=0 HEAD)
         fi
@@ -92,8 +96,8 @@ jobs:
           
     - name: Create git tag
       run: |
-        git tag v${{ steps.version.outputs.version }}
-        git push origin v${{ steps.version.outputs.version }}
+        git tag ${{ steps.version.outputs.version }}
+        git push origin ${{ steps.version.outputs.version }}
         
     - name: Update CHANGELOG.md
       run: |
@@ -147,7 +151,7 @@ jobs:
           const { data: issue } = await github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            title: `Release v${{ needs.release.outputs.release_version }}`,
+            title: `Release ${{ needs.release.outputs.release_version }}`,
             body: issueBody,
             labels: ['release']
           });

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Release version to fix (e.g., 1, 2, 3)'
+        description: 'Release version to fix (e.g., 1.0.0, 1.1.0, 2.0.0)'
         required: true
         type: string
       confirm:
@@ -73,7 +73,7 @@ jobs:
           });
           
           const releaseIssue = issues.data.find(issue => 
-            issue.title.includes(`Release v${{ github.event.inputs.release_version }}`)
+            issue.title.includes(`Release ${{ github.event.inputs.release_version }}`)
           );
           
           if (releaseIssue) {
@@ -87,9 +87,9 @@ jobs:
     - name: Get commits since last fix/release
       id: commits
       run: |
-        LAST_TAG=$(git tag -l "v${{ github.event.inputs.release_version }}*" --sort=-version:refname | head -n 1)
+        LAST_TAG=$(git tag -l "${{ github.event.inputs.release_version }}*" --sort=-version:refname | head -n 1)
         if [ -z "$LAST_TAG" ]; then
-          LAST_TAG="v${{ github.event.inputs.release_version }}"
+          LAST_TAG="${{ github.event.inputs.release_version }}"
         fi
         COMMITS=$(git log --pretty=format:"- %s (%h)" ${LAST_TAG}..HEAD)
         echo "commits<<EOF" >> $GITHUB_OUTPUT
@@ -119,8 +119,8 @@ jobs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git tag v${{ steps.version.outputs.fix_version }}
-        git push origin v${{ steps.version.outputs.fix_version }}
+        git tag ${{ steps.version.outputs.fix_version }}
+        git push origin ${{ steps.version.outputs.fix_version }}
 
   # Job 3: Comment on release issue
   comment_issue:
@@ -145,10 +145,10 @@ jobs:
           ${{ needs.hotfix.outputs.commits_list }}
           
           ## Status
-          - ✅ Hotfix Docker image built and pushed
-          - ✅ Git tag created (\`v${{ needs.hotfix.outputs.fix_version }}\`)
-          - ✅ Latest tag updated
-          - ⏳ Ready for deployment
+          - Hotfix Docker image built and pushed
+          - Git tag created (\`${{ needs.hotfix.outputs.fix_version }}\`)
+          - Latest tag updated
+          - Ready for deployment
           
           ---
           *This comment was automatically created by the hotfix workflow.*`;

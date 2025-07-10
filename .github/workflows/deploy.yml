@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Release version to deploy (e.g., 1, 2, 3)'
+        description: 'Release version to deploy (e.g., 1.0.0, 1.1.0, 2.0.0)'
         required: true
         type: string
       confirm:
@@ -57,16 +57,18 @@ jobs:
           });
           
           const releaseIssue = issues.data.find(issue => 
-            issue.title.includes(`Release v${{ github.event.inputs.release_version }}`)
+            issue.title.includes(`Release ${{ github.event.inputs.release_version }}`)
           );
           
           if (releaseIssue) {
             console.log('Found release issue:', releaseIssue.number);
+            core.setOutput('issue_number', releaseIssue.number);
             return releaseIssue.number;
           } else {
-            throw new Error(`Release issue for version ${{ github.event.inputs.release_version }} not found`);
+            console.log('Release issue not found, will skip commenting');
+            core.setOutput('issue_number', '0');
+            return 0;
           }
-        result-encoding: string
 
   # Job 2: Deploy to production VM
   deploy:
@@ -136,7 +138,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     needs: [verify, deploy]
-    if: always() && needs.verify.outputs.image_exists == 'true'
+    if: always() && needs.verify.outputs.image_exists == 'true' && needs.verify.outputs.issue_number != '0'
     
     steps:
     - name: Comment on release issue
@@ -145,6 +147,12 @@ jobs:
         script: |
           const deploymentStatus = '${{ needs.deploy.result }}';
           const statusEmoji = deploymentStatus === 'success' ? 'Yes' : 'No';
+          const issueNumber = parseInt('${{ needs.verify.outputs.issue_number }}');
+          
+          if (issueNumber === 0) {
+            console.log('No release issue found, skipping comment');
+            return;
+          }
           
           const commentBody = `## Production Deployment ${statusEmoji}
           
@@ -154,7 +162,7 @@ jobs:
           **Status**: ${deploymentStatus === 'success' ? 'Successfully deployed' : 'Deployment failed'}
           
           ## Application Access
-          **URL**: http://84.201.149.172:3000/hw/store
+          **URL**: http://${{ secrets.VM_HOST }}:3000/hw/store
           
           ## Docker Image
           \`cr.yandex/crp18f0881clcu82u2d8/app:${{ github.event.inputs.release_version }}_latest\`
@@ -170,6 +178,9 @@ jobs:
           await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            issue_number: ${{ needs.verify.outputs.issue_number }},
+            issue_number: issueNumber,
             body: commentBody
-          }); 
+          });
+          
+          console.log(`Comment added to issue #${issueNumber}`);
+          
