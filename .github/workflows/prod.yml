@@ -7,10 +7,12 @@ on:
         type: string
         required: true
         description: "Version to release"
+        default: 16
       issue-number:
         type: number
         required: true
         description: "Release Issue number id"
+        default: 6
 
 jobs:
   start_docker:
