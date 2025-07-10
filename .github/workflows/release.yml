@@ -79,11 +79,11 @@ jobs:
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          base: main
-          head: changelog/update-v${{ steps.vars.outputs.version }}
+          commit-message: "chore: update CHANGELOG for v${{ steps.vars.outputs.version }}"
           title: "chore: update CHANGELOG for v${{ steps.vars.outputs.version }}"
           body: "Автоматическое обновление CHANGELOG.md для релиза v${{ steps.vars.outputs.version }}"
-          draft: false
+          base: main
+          branch: changelog/update-v${{ steps.vars.outputs.version }}
 
       - name: Create release branch
         run: |
