@@ -26,13 +26,24 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             sudo usermod -aG docker ${USER}
-            echo ${{ secrets.YC_OAUTH_TOKEN }} | docker login --username oauth --password-stdin cr.yandex
             
-            docker pull cr.yandex/${{secrets.YC_REGISTRY_ID}}/app:${{ inputs.version }}_latest
-            docker kill $(docker ps -q)
-            docker rm $(docker ps -a -q)
-            docker run -d --restart unless-stopped -p 3000:3000 cr.yandex/${{secrets.YC_REGISTRY_ID}}/app:${{ inputs.version }}_latest
-            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ inputs.version }}_latest"
+            curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+            export PATH="$HOME/yandex-cloud/bin:$PATH"
+            yc config set token ${{ secrets.YC_OAUTH_TOKEN }}
+            yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
+            yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+            yc container registry configure-docker
+
+            echo ${{ secrets.YC_OAUTH_TOKEN }} | docker login --username oauth --password-stdin cr.yandex
+    
+            docker pull cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ inputs.version }}_latest
+
+
+            docker ps -q | xargs -r docker kill
+            docker ps -a -q | xargs -r docker rm
+
+
+            docker run -d --restart unless-stopped -p 3000:3000 cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ inputs.version }}_latest
 
       - name: Get current date
         id: date
