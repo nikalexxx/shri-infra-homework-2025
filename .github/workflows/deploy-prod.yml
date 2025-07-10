@@ -55,11 +55,12 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const today = new Date().toISOString().split("T")[0];
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ steps.find_issue.outputs.issue_number }},
-              body: `Deployed version ${process.env.VERSION}_latest to prod by @${{ github.actor }} on $(date -u +"%Y-%m-%d")`
+              body: `Deployed version ${process.env.VERSION}_latest to prod by @${{ github.actor }} on ${today}`
             });
         env:
           VERSION: ${{ github.event.inputs.version }}
