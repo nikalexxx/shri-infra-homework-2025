@@ -6,10 +6,10 @@ on:
       release_version:
         description: 'Версия релиза (например, 1.2.3)'
         required: true
-    issue-number:
-      type: number
-      required: true
-      description: "Issue number id"
+      issue-number:
+        type: number
+        required: true
+        description: "Issue number id"
 
 env:
   REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
