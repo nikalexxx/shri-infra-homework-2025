@@ -67,15 +67,15 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   gh issue create \
-                    --title "Release ${{ VERSION }}" \
+                    --title "Release $VERSION" \
                     --body "Дата: $(date '+%Y-%m-%d %H:%M:%S')
                   Автор релиза: ${{ github.actor }}
-                  Номер версии: ${{ VERSION }}
+                  Номер версии: $VERSION
 
                   Список коммитов:
                   ${{ steps.changelog.outputs.commits }}
 
-                  Docker-образ: cr.yandex/${{secrets.YC_CR_REGISTRY_ID}}/app:${{ VERSION }}
+                  Docker-образ: cr.yandex/${{secrets.YC_CR_REGISTRY_ID}}/app:$VERSION
                   " \
                     --repo ${{ github.repository }}
 
