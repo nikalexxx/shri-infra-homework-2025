@@ -3,10 +3,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-lint-and-test:
-  runs-on: ubuntu-latest
-  steps:
-    - name: Lint & Test
-      uses: ./.github/actions/lint-and-test
-      with:
-        node-version: "18"
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Lint & Test
+        uses: ./.github/actions/lint-and-test
+        with:
+          node-version: "18"
