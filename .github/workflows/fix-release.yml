@@ -92,35 +92,35 @@ jobs:
           git push origin "$TAG"
 
       - name: Get Previous Tag
-        id: prev
+        id: prev_tag
         run: |
-          PREV=$(git tag --list "v${VERSION}_fix*" --sort=-v:refname | grep -v "$TAG" | head -n1)
+          PREV=$(git tag --list "v${{ env.VERSION }}_fix*" --sort=-v:refname | grep -v "v${{ env.VERSION }}_fix${{ env.FIX }}" | head -n1)
           if [ -z "$PREV" ]; then
-            PREV="v${VERSION}"
+          PREV="v${{ env.VERSION }}"
           fi
-          echo "prev_tag=$PREV" >> $GITHUB_OUTPUT
-
-      - name: Generate Changelog
-        id: changelog
-        run: |
-          LOG=$(git log ${{ steps.prev.outputs.prev_tag }}..HEAD --pretty=format:"* %s (%h)")
-          echo "log<<EOF" >> $GITHUB_OUTPUT
-          echo "$LOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Comment to GitHub Issue
-        run: |
-          gh issue comment 1 --body "$(cat <<EOF
-          🔧 **Фикс релиза \`${VERSION}\`**
-          📅 Дата фикса: ${{ steps.date.outputs.date }}
-          👤 Автор: @${{ github.actor }}
-          🧾 Версия: \`${VERSION}_fix${FIX}\`
-          📦 Docker образы:
-          \`${REGISTRY}/${IMAGE_NAME}:${VERSION}_fix${FIX}\`
-          \`${REGISTRY}/${IMAGE_NAME}:${VERSION}_latest\`
-        🔍 Коммиты с момента \`${{ steps.prev.outputs.prev_tag }}\`:
-          \`\`\`markdown
-          ${{ steps.changelog.outputs.log }}
-          \`\`\`
-          EOF
-          )"
+          echo "prev_tag=$PREV" >> "$GITHUB_OUTPUT"
+  
+          - name: Generate Changelog
+            id: changelog
+            run: |
+              LOG=$(git log ${{ steps.prev.outputs.prev_tag }}..HEAD --pretty=format:"* %s (%h)")
+              echo "log<<EOF" >> $GITHUB_OUTPUT
+              echo "$LOG" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+  
+          - name: Comment to GitHub Issue
+            run: |
+              gh issue comment 1 --body "$(cat <<EOF
+              🔧 **Фикс релиза \`${VERSION}\`**
+              📅 Дата фикса: ${{ steps.date.outputs.date }}
+              👤 Автор: @${{ github.actor }}
+              🧾 Версия: \`${VERSION}_fix${FIX}\`
+              📦 Docker образы:
+              \`${REGISTRY}/${IMAGE_NAME}:${VERSION}_fix${FIX}\`
+              \`${REGISTRY}/${IMAGE_NAME}:${VERSION}_latest\`
+            🔍 Коммиты с момента \`${{ steps.prev.outputs.prev_tag }}\`:
+              \`\`\`markdown
+              ${{ steps.changelog.outputs.log }}
+              \`\`\`
+              EOF
+              )"
