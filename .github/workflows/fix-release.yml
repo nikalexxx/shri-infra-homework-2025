@@ -1,0 +1,35 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: "Release version to patch"
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/${{ secrets.YA_REGISTRY_ID }}/app
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm run test
+      - run: npm run build
+
+      - name: Docker build and push fix
+        run: |
+          FIX_TAG=${{ github.event.inputs.version }}_fix${{ github.run_number }}
+          docker build -t $REGISTRY:$FIX_TAG -t $REGISTRY:${{ github.event.inputs.version }}_latest .
+          docker login --username oauth --password ${{ secrets.YA_OAUTH_TOKEN }} cr.yandex
+          docker push $REGISTRY:$FIX_TAG
+          docker push $REGISTRY:${{ github.event.inputs.version }}_latest
+
+      - name: Tag git
+        run: |
+          git tag v${{ github.event.inputs.version }}-fix${{ github.run_number }}
+          git push origin v${{ github.event.inputs.version }}-fix${{ github.run_number }}
