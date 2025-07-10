@@ -77,6 +77,8 @@ jobs:
 
       - name: Create Pull Request
         uses: actions/github-script@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         with:
           script: |
             const changelog_version = `${{ steps.vars.outputs.version }}`;
