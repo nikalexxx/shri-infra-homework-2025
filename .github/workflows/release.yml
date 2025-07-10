@@ -66,13 +66,24 @@ jobs:
           fi
           mv temp_changelog.md CHANGELOG.md
 
-      - name: Commit updated changelog to main
+      - name: Commit updated changelog to temp branch
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
+          git checkout -b changelog/update-v${{ steps.vars.outputs.version }}
           git add CHANGELOG.md
           git commit -m "chore: update CHANGELOG for v${{ steps.vars.outputs.version }}"
-          git push origin main
+          git push origin changelog/update-v${{ steps.vars.outputs.version }}
+
+      - name: Create pull request to main with changelog
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          head: changelog/update-v${{ steps.vars.outputs.version }}
+          title: "chore: update CHANGELOG for v${{ steps.vars.outputs.version }}"
+          body: "Автоматическое обновление CHANGELOG.md для релиза v${{ steps.vars.outputs.version }}"
+          draft: false
 
       - name: Create release branch
         run: |
