@@ -51,19 +51,20 @@ jobs:
           git checkout -b releases/${{ env.VERSION }}
           git push origin releases/${{ env.VERSION }}
 
-      - name: Log in to Yandex Container Registry
-        run: |
-          echo "${{ secrets.YC_CR_TOKEN }}" | docker login -u json_key --password-stdin cr.yandex
+      - name: Yandex Cloud CR "Login" Action for GitHub Actions
+        uses: yc-actions/yc-cr-login@v2
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
 
-      - name: Build Docker image
+      - name: Create Docker image
         run: |
-          docker build -t $REGISTRY/$IMAGE_NAME:${{ env.VERSION }} .
-          docker tag $REGISTRY/$IMAGE_NAME:${{ env.VERSION }} $REGISTRY/$IMAGE_NAME:${{ env.VERSION }}_latest
+          docker build -t cr.yandex/${{secrets.YC_REGISTRY_ID}}/app:${{ github.run_number }} .
+          docker push cr.yandex/${{secrets.YC_REGISTRY_ID}}/app:${{ github.run_number }}
 
-      - name: Push Docker image
+      - name: Create Docker image current
         run: |
-          docker push $REGISTRY/$IMAGE_NAME:${{ env.VERSION }}
-          docker push $REGISTRY/$IMAGE_NAME:${{ env.VERSION }}_latest
+          docker image build -t cr.yandex/${{secrets.YC_REGISTRY_ID}}/app:${{ github.run_number }}_latest .
+          docker push cr.yandex/${{secrets.YC_REGISTRY_ID}}/app:${{ github.run_number }}_latest
 
       - name: Get last release tag
         id: last_tag
