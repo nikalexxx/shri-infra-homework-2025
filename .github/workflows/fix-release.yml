@@ -101,17 +101,20 @@ jobs:
           echo "prev_tag=$PREV" >> "$GITHUB_OUTPUT"
 
       - name: Comment to GitHub Issue
-        run: |
-          gh issue comment 1 --body "$(
-            echo '🔧 **Фикс релиза `${VERSION}`**'
-            echo "📅 Дата фикса: ${{ steps.date.outputs.date }}"
-            echo "👤 Автор: @${{ github.actor }}"
-            echo "🧾 Версия: \`${VERSION}_fix${FIX}\`"
-            echo "📦 Docker образы:"
-            echo "\`${REGISTRY}/${IMAGE_NAME}:${VERSION}_fix${FIX}\`"
-            echo "\`${REGISTRY}/${IMAGE_NAME}:${VERSION}_latest\`"
-            echo "🔍 Коммиты с момента \`${{ steps.prev_tag.outputs.prev_tag }}\`:"
-            echo '```markdown'
-            echo "${{ steps.changelog.outputs.log }}"
-            echo '```'
-          )"
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{inputs.issue-number}}
+          body: |
+            gh issue comment 1 --body "$(
+              echo '🔧 **Фикс релиза `${VERSION}`**'
+              echo "📅 Дата фикса: ${{ steps.date.outputs.date }}"
+              echo "👤 Автор: @${{ github.actor }}"
+              echo "🧾 Версия: \`${VERSION}_fix${FIX}\`"
+              echo "📦 Docker образы:"
+              echo "\`${REGISTRY}/${IMAGE_NAME}:${VERSION}_fix${FIX}\`"
+              echo "\`${REGISTRY}/${IMAGE_NAME}:${VERSION}_latest\`"
+              echo "🔍 Коммиты с момента \`${{ steps.prev_tag.outputs.prev_tag }}\`:"
+              echo '```markdown'
+              echo "${{ steps.changelog.outputs.log }}"
+              echo '```'
+            )"
