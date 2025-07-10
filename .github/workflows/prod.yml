@@ -44,7 +44,7 @@ steps:
       echo '```markdown' >> $GITHUB_OUTPUT
       echo "${{ steps.changelog.outputs.log }}" >> $GITHUB_OUTPUT
       echo '```' >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+      echo "EOF" >> $GITHUB_OUTPUT
 
   - name: Comment to GitHub Issue
     uses: peter-evans/create-or-update-comment@v4
