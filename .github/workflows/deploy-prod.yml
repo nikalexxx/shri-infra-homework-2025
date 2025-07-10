@@ -1,0 +1,37 @@
+name: Deploy to Prod
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to deploy"
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check image exists
+        run: |
+          if ! yc container registry image list --repository-id ${{ secrets.YC_REGISTRY_ID }} \
+             | grep "${{ github.event.inputs.version }}_latest"; then
+            echo "Image not found"; exit 1;
+          fi
+
+      - name: SSH & Run container
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            docker pull cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+            docker stop app || true
+            docker rm app || true
+            docker run -d --name app cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+
+      - name: Comment on Issue
+        uses: peter-evans/create-or-update-comment@v2
+        with:
+          issue-number: ${{ secrets.LAST_RELEASE_ISSUE }}
+          body: |
+            Deployed version ${{ github.event.inputs.version }}_latest to prod by ${{ github.actor }} on $(date -u +"%Y-%m-%d")
