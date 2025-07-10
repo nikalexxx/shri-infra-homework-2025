@@ -28,8 +28,8 @@ jobs:
 
             - name: Create release branch
               run: |
-                  git checkout -b releases/${VERSION}
-                  git push origin releases/${VERSION}
+                  git checkout -b releases/$VERSION
+                  git push origin releases/$VERSION
 
             - name: Login to Yandex Cloud
               run: |
@@ -37,15 +37,15 @@ jobs:
 
             - name: Build and push Docker images
               run: |
-                  docker build -t cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION} .
-                  docker tag cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION} cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
-                  docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}
+                  docker build -t cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:$VERSION .
+                  docker tag cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:$VERSION cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
+                  docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:$VERSION
                   docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
 
             - name: Create and push version tag
               run: |
-                  git tag ${{ VERSION }}
-                  git push origin ${{ VERSION }}
+                  git tag $VERSION
+                  git push origin $VERSION
 
             - name: Get previous tag and commits
               id: changelog
@@ -81,15 +81,15 @@ jobs:
 
             - name: Update CHANGELOG.md
               run: |
-                  git checkout releases/${{ VERSION }}
+                  git checkout releases/$VERSION
 
                   DATE="$(date '+%Y-%m-%d %H:%M:%S')"
-                  HEADER="## ${{ VERSION }} — $DATE"
+                  HEADER="## $VERSION — $DATE"
                   COMMITS="${{ steps.changelog.outputs.commits }}"
 
                   echo -e "$HEADER\n$COMMITS\n" | cat - CHANGELOG.md > CHANGELOG.tmp
                   mv CHANGELOG.tmp CHANGELOG.md
 
                   git add CHANGELOG.md
-                  git commit -m "update CHANGELOG.md for release ${{ VERSION }}"
-                  git push origin releases/${{ VERSION }}
+                  git commit -m "update CHANGELOG.md for release $VERSION"
+                  git push origin releases/$VERSION
