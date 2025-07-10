@@ -10,8 +10,12 @@ env:
 jobs:
   # 1. Проверки
   lint-test:
-    name: Lint & Test
-    uses: ./.github/actions/lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lint & Test
+        uses: ./.github/actions/lint-and-test
+        with:
+          node-version: "18"
 
   # 2. Сборка и пуш Docker
   build-and-push:
