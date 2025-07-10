@@ -11,6 +11,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Docker login to YCR (GitHub runner)
+        run: echo "${{ secrets.YC_CLOUD_OAUTH_TOKEN }}" | docker login -u oauth --password-stdin cr.yandex
+
       - name: SSH into server and deploy
         uses: appleboy/ssh-action@v0.1.7
         with:
@@ -18,6 +21,7 @@ jobs:
           username: antsibordaniil
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
+            echo "${{ secrets.YC_CLOUD_OAUTH_TOKEN }}" | docker login -u oauth --password-stdin cr.yandex
             docker pull cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
             docker stop app || true
             docker rm app || true
