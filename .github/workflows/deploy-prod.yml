@@ -10,12 +10,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Check image exists
+      - name: Check if image exists
         run: |
-          if ! yc container registry image list --repository-id ${{ secrets.YC_REGISTRY_ID }} \
-             | grep "${{ github.event.inputs.version }}_latest"; then
-            echo "Image not found"; exit 1;
-          fi
+          IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest"
+          docker manifest inspect "$IMAGE" > /dev/null 2>&1 \
+            || (echo "Image not found: $IMAGE" && exit 1)
 
       - name: SSH & Run container
         uses: appleboy/ssh-action@v0.1.7
