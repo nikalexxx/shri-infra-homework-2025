@@ -1,20 +1,12 @@
 name: PR Checks
-
 on:
   pull_request:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+    types: [opened, synchronize, reopened]
 
-jobs:
-  lint-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 20
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run test
+lint-and-test:
+  runs-on: ubuntu-latest
+  steps:
+    - name: Lint & Test
+      uses: ./.github/actions/lint-and-test
+      with:
+        node-version: "18"

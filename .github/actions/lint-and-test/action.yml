@@ -1,0 +1,25 @@
+name: Lint and Test
+description: Запускает npm run lint и npm run test параллельно
+inputs:
+  node-version:
+    required: false
+    default: "18"
+runs:
+  using: composite
+  steps:
+    - name: Чекаут кода
+      uses: actions/checkout@v4
+
+    - name: Установка Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Установка зависимостей
+      run: npm ci
+
+    - name: Запуск lint
+      run: npm run lint
+
+    - name: Запуск tests
+      run: npm run test
