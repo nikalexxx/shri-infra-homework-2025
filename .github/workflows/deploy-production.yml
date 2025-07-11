@@ -34,10 +34,14 @@ jobs:
 
       - name: Deploy on production server over SSH
         uses: appleboy/ssh-action@v1.0.0
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          envs: "IMAGE_NAME,RELEASE_VERSION"
           script: |
             sudo groupadd docker
             sudo usermod -aG docker ${USER}
