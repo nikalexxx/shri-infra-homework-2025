@@ -1,23 +1,23 @@
 .card {
-    display: inline-block;
-    vertical-align: top;
+  display: inline-block;
+  vertical-align: top;
 }
 
 p.card-text {
-    max-height: 3em;
-    overflow: hidden;
+  max-height: 3em;
+  overflow: hidden;
 }
 
 .Image {
-    width: 100%;
-    min-height: 140px;
-    display: inline-flex;
-    color: #999;
-    background-color: orange;
-    align-items: center;
-    justify-content: center;
+  width: 100%;
+  min-height: 150px;
+  display: inline-flex;
+  color: #999;
+  background-color: orange;
+  align-items: center;
+  justify-content: center;
 }
 
 .bg-orange {
-    background-color: orange;
+  background-color: orange;
 }
