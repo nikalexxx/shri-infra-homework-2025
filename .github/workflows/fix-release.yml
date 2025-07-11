@@ -23,7 +23,8 @@ jobs:
       - name: Checkout release branch
         uses: actions/checkout@v4
         with:
-          ref: releases/$BASE_VERSION
+          ref: releases/${{ inputs.release_version }}
+          fetch-depth: 0
           
       - name: Setup Node.js
         uses: actions/setup-node@v4
