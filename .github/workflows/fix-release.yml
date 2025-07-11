@@ -15,8 +15,6 @@ env:
   REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
   IMAGE_NAME: app
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  VERSION: ${{ github.event.inputs.release_version }}
-  FIX: ${{ needs.setup.outputs.fix_number }}
 
 jobs:
   setup:
@@ -24,6 +22,11 @@ jobs:
     outputs:
       fix_number: ${{ steps.fix.outputs.fix_number }}
     steps:
+      - name: Set environment variables
+        run: |
+          echo "VERSION=${{ github.event.inputs.release_version }}" >> $GITHUB_ENV
+          echo "FIX=${{ needs.setup.outputs.fix_number }}" >> $GITHUB_ENV
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
