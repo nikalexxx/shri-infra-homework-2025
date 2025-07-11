@@ -49,11 +49,6 @@ jobs:
 
       - name: Push Docker images
         run: |
-          docker push $REGISTRY_HOST/$REESTR_ID/$APP_NAME:$VERSION
-          docker push $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_latest
-
-      - name: Push images
-        run: |
           docker push ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}
           docker push ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}_latest
 
