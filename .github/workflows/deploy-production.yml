@@ -43,8 +43,6 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           envs: "IMAGE_NAME,RELEASE_VERSION"
           script: |
-            sudo groupadd docker
-            sudo usermod -aG docker ${USER}
             docker stop app || true
             docker rm app || true
             docker pull $IMAGE_NAME:${RELEASE_VERSION}_latest
@@ -53,7 +51,7 @@ jobs:
       - name: Add comment to release issue
         uses: peter-evans/create-or-update-comment@v4
         with:
-          issue-number: ${{ secrets.RELEASE_ISSUE_NUMBER }}
+          issue-number: ${{ inputs.issue_number }}
           body: |
             **Release Deployed to Production**
 
