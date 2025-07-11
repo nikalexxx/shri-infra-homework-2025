@@ -1,5 +1,4 @@
-name: Release Flow
-
+name: Create Release
 on:
   workflow_dispatch:
 
@@ -9,25 +8,18 @@ env:
   REESTR_ID: ${{ secrets.REESTR_ID }}
 
 jobs:
-  # 1. Проверки (lint + test)
-  lint-and-test:
+  lint-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Lint & Test
+        uses: ./.github/actions/lint-and-test
         with:
           node-version: 22
-      - name: Install dependencies
-        run: npm ci
-      - name: Lint code
-        run: npm run lint
-      - name: Run tests
-        run: npm run test
 
-  # 2. Сборка и пуш Docker образа
   build-and-push:
+    name: Build & Push Docker
     needs: lint-test
     runs-on: ubuntu-latest
     env:
@@ -40,37 +32,37 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to Yandex Container Registry
-        run: echo "${{ secrets.YC_IAM_TOKEN }}" | docker login --username oauth --password-stdin ${{ env.REGISTRY_HOST }}
+        run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin ${{ env.REGISTRY_HOST }}
 
-      - name: Build and tag Docker image
+      - name: Build & Tag image
         run: |
           docker build \
             -t ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }} \
             -t ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }}_latest \
             .
 
-      - name: Push Docker images
+      - name: Push images
         run: |
           docker push ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }}
           docker push ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }}_latest
 
-  # 3. Создание релизной ветки
   release-branch:
+    name: Create Release Branch
     needs: build-and-push
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
-      - name: Create release branch
+      - name: Create branch releases/<version>
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git checkout -b releases/${{ env.VERSION }}
-          git push origin releases/${{ env.VERSION }}
+          git checkout -b releases/${VERSION}
+          git push origin releases/${VERSION}
 
-  # 4. Создание тега и обновление CHANGELOG.md
   tag-and-changelog:
+    name: Tag & Update Changelog
     needs: release-branch
     runs-on: ubuntu-latest
     env:
@@ -80,52 +72,57 @@ jobs:
         with:
           ref: releases/${{ env.VERSION }}
           fetch-depth: 0
+
       - name: Fetch all tags
         run: git fetch --tags
-      - name: Create git tag
+
+      - name: Create Git tag
         run: |
-          git tag ${{ env.VERSION }}
-          git push origin ${{ env.VERSION }}
+          git tag ${VERSION}
+          git push origin ${VERSION}
+
       - name: Generate changelog entry
         id: changelog
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 ${{ env.VERSION }}^ 2>/dev/null || echo "")
+          PREV_TAG=$(git describe --tags --abbrev=0 ${VERSION}^ || echo "")
           if [ -n "$PREV_TAG" ]; then
-            RANGE="${PREV_TAG}..HEAD"
+            RANGE="$PREV_TAG..HEAD"
           else
             RANGE="HEAD"
           fi
-          COMMITS=$(git log $RANGE --pretty=format:'- %s (%an)')
+          COMMITS=$(git log $RANGE --pretty=format:'- %s (%an)' )
           DATE=$(date -u +"%Y-%m-%d")
-          echo -e "## ${{ env.VERSION }} ($DATE)\n\n$COMMITS\n" > new_changelog.md
-      - name: Prepend new changelog to CHANGELOG.md
+          echo -e "## ${VERSION} (${DATE})\n\n${COMMITS}\n" > new_changelog.md
+
+      - name: Prepend to CHANGELOG.md
         run: |
           cat new_changelog.md CHANGELOG.md > CHANGELOG.tmp
           mv CHANGELOG.tmp CHANGELOG.md
-      - name: Commit updated CHANGELOG.md
+
+      - name: Commit CHANGELOG.md
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
           git add CHANGELOG.md
-          git commit -m "chore: update CHANGELOG for release ${{ env.VERSION }}"
-          git push origin releases/${{ env.VERSION }}
+          git commit -m "chore: update CHANGELOG for release ${VERSION}"
+          git push origin releases/${VERSION}
 
-  # 5. GitHub Issue с информацией о релизе
   create-issue:
     needs: tag-and-changelog
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.run_number }}
-      APP_NAME: ${{ env.APP_NAME }}
-      REGISTRY_HOST: ${{ env.REGISTRY_HOST }}
-      REESTR_ID: ${{ env.REESTR_ID }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare issue content
+      - name: Prepare issue body
         run: |
-          REG="${REGISTRY_HOST}/${REESTR_ID}"
+          APP_NAME="${{ env.APP_NAME }}"
+          REGISTRY_HOST="${{ env.REGISTRY_HOST }}"
+          REESTR_ID="${{ env.REESTR_ID }}"
+          REG="$REGISTRY_HOST/$REESTR_ID"
           DATE=$(date -u +"%Y-%m-%d")
+
           PREV_TAG=$(git describe --tags --abbrev=0 $VERSION^ 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
             LOG=$(git log $PREV_TAG..HEAD --pretty=format:'- %s (%an)')
@@ -163,3 +160,11 @@ jobs:
             });
 
             core.setOutput("issue_number", result.data.number);
+            fs.writeFileSync('release-issue-number.txt', result.data.number.toString());
+          result-encoding: string
+
+      - name: Upload issue number
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-issue-number
+          path: release-issue-number.txt
