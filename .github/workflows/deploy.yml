@@ -18,7 +18,7 @@ jobs:
             - name: Login to Yandex Container Registry (locally in CI)
               id: yc_login
               run: |
-                  echo "${{ secrets.YC_SERVICE_KEY }}" > sa-key.json
+                  printf "%s" "${{ secrets.YC_SERVICE_KEY }}" > sa-key.json
                   YC_TOKEN=$(yc iam create-token --service-account-key sa-key.json)
                   echo "token=$YC_TOKEN" >> $GITHUB_OUTPUT
               env:
