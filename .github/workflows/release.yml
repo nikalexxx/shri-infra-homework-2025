@@ -69,65 +69,58 @@ jobs:
               });
 
               // Находим последний релизный тег (начинается с 'v' без 'fix')
-              let lastReleaseTag = null;
-              let latestDate = 0;
+              const releaseTags = tags.filter(tag => 
+                tag.name.startsWith('v') && !tag.name.includes('fix')
+              );
 
-              for (const tag of tags) {
-                if (tag.name.startsWith('v') && !tag.name.includes('fix')) {
-                  // Проверяем наличие даты коммита
-                  if (tag.commit && tag.commit.committer && tag.commit.committer.date) {
-                    const tagDate = new Date(tag.commit.committer.date).getTime();
-                    if (tagDate > latestDate) {
-                      latestDate = tagDate;
-                      lastReleaseTag = tag;
-                    }
-                  } else {
-                    console.log(`Tag ${tag.name} has no commit date, skipping`);
-                  }
-                }
-              }
+              // Сортируем по номеру версии
+              releaseTags.sort((a, b) => {
+                const numA = parseInt(a.name.substring(1));
+                const numB = parseInt(b.name.substring(1));
+                return numB - numA;
+              });
 
+              let lastReleaseTag = releaseTags.length > 0 ? releaseTags[0].name : null;
               let commitMessages = [];
-              let commitRange = 'main';
 
               if (lastReleaseTag) {
-                commitRange = `${lastReleaseTag.name}..main`;
-                try {
-                  // Получаем коммиты между тегами
-                  const compare = await github.rest.repos.compareCommits({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    base: lastReleaseTag.name,
-                    head: 'main'
-                  });
-                  commitMessages = compare.data.commits.map(c => c.commit.message.split('\n')[0]);
-                } catch (compareError) {
-                  console.error('Error comparing commits:', compareError);
-                  // Получаем последние 20 коммитов как fallback
-                  const commits = await github.rest.repos.listCommits({
+                // Получаем коммиты между последним релизом и текущим main
+                const compare = await github.rest.repos.compareCommits({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  base: lastReleaseTag,
+                  head: 'main'
+                });
+                commitMessages = compare.data.commits.map(c => 
+                  c.commit.message.split('\n')[0]
+                ).filter(msg => !msg.includes("Merge branch"));
+              } else {
+                // Для первого релиза берем все коммиты
+                const commits = await github.paginate(
+                  github.rest.repos.listCommits,
+                  {
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     sha: 'main',
-                    per_page: 20
-                  });
-                  commitMessages = commits.data.map(c => c.commit.message.split('\n')[0]);
-                }
-              } else {
-                console.log('No previous release tag found, using last 20 commits');
-                // Для первого релиза берем последние 20 коммитов
-                const commits = await github.rest.repos.listCommits({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  sha: 'main',
-                  per_page: 20
-                });
-                commitMessages = commits.data.map(c => c.commit.message.split('\n')[0]);
+                    per_page: 100
+                  }
+                );
+                commitMessages = commits.map(c => 
+                  c.commit.message.split('\n')[0]
+                ).filter(msg => !msg.includes("Merge branch"));
               }
+
+              // Фильтруем коммиты, связанные с релизом
+              const filteredCommits = commitMessages.filter(msg => 
+                !msg.toLowerCase().includes("changelog") &&
+                !msg.toLowerCase().includes("release") &&
+                !msg.startsWith("Merge pull request")
+              );
 
               // Создаем Issue
               const issueBody = `**Version:** ${process.env.VERSION}\n\n` +
                                `**Author:** ${context.actor}\n\n` +
-                               `**Commits (${commitRange}):**\n${commitMessages.map(m => '- ' + m).join('\n')}\n\n` +
+                               `**Commits since last release:**\n${filteredCommits.map(m => '- ' + m).join('\n')}\n\n` +
                                `**Image:** ${process.env.REGISTRY}/app:${process.env.VERSION}\n\n` +
                                `**Date:** ${new Date().toISOString()}`;
 
@@ -147,7 +140,7 @@ jobs:
               }
 
               const newEntry = `# v${process.env.VERSION}\n\n` +
-                              `${commitMessages.map(m => '- ' + m).join('\n')}\n\n`;
+                              `${filteredCommits.map(m => '- ' + m).join('\n')}\n\n`;
               fs.writeFileSync('CHANGELOG.md', newEntry + changelog);
 
               // Коммитим изменения
