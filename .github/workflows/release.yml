@@ -114,12 +114,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.create-release.outputs.vars.branch }}
+          fetch-depth: 0
 
       - name: Create GitHub Issue with release info
         run: |
           set -eux
-          git fetch --tags
+          git fetch --tags --force
           PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+$" | head -n1)
           echo "Previous tag: $PREV_TAG"
           
@@ -128,10 +128,26 @@ jobs:
           else
             COMMITS=$(git log --pretty=format:"- %s")
           fi
-          echo "Commits: $COMMITS"
-          BODY="## Релиз v${{ github.run_number }}\n\n**Дата**: $(date +'%Y-%m-%d')\n**Автор**: @${{ github.actor }}\n\n**Коммиты:**\n$COMMITS\n\n**Образы:**\n- ${{ env.REGISTRY }}:${{ github.run_number }}\n- ${{ env.REGISTRY }}:${{ github.run_number }}_latest"
-          echo -e "$BODY" > body.md
-          gh issue create --title "Релиз v${{ github.run_number }}" --body-file body.md
+          
+          echo "Commits since $PREV_TAG:"
+          echo "$COMMITS"
+          
+          BODY=$(cat <<EOF
+          ## Релиз v${{ github.run_number }}
+  
+          **Дата**: $(date +'%Y-%m-%d')
+          **Автор**: @${{ github.actor }}
+  
+          **Коммиты:**
+          $COMMITS
+  
+          **Образы:**
+          - ${{ env.REGISTRY }}:${{ github.run_number }}
+          - ${{ env.REGISTRY }}:${{ github.run_number }}_latest
+          EOF
+          )
+          
+          echo "$BODY" | gh issue create --title "Релиз v${{ github.run_number }}" --body-file -
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
