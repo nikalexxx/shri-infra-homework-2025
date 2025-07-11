@@ -3,27 +3,39 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Release version to deploy'
+        description: 'Версия релиза для деплоя'
         required: true
+        type: string
 
 jobs:
-  deploy:
+  verify-image:
     runs-on: ubuntu-latest
+    env:
+      REGISTRY: ${{ secrets.REGISTRY_ID }}
     steps:
-      # Проверка существования образа
       - name: Check image exists
         env:
           YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
-          REGISTRY: ${{ secrets.REGISTRY_ID }}
         run: |
           echo "$YC_SA_KEY" | docker login \
             --username json_key \
-            --password-stdin \
-            cr.yandex
-          docker pull $REGISTRY/app:${{ inputs.release_version }}_latest
+            --password-stdin cr.yandex
+          
+          IMAGE_TAG="${REGISTRY}/app:${{ github.event.inputs.release_version }}_latest"
+          if docker manifest inspect $IMAGE_TAG > /dev/null; then
+            echo "Image $IMAGE_TAG exists"
+          else
+            echo "Error: Image $IMAGE_TAG not found in Container Registry!"
+            exit 1
+          fi
 
-      # Деплой на сервер
-      - name: Deploy to VM
+  deploy:
+    runs-on: ubuntu-latest
+    needs: verify-image
+    env:
+      REGISTRY: ${{ secrets.REGISTRY_ID }}
+    steps:
+      - name: Deploy to production server
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VM_IP }}
@@ -32,32 +44,44 @@ jobs:
           script: |
             docker stop app || true
             docker rm app || true
-            docker run -d --name app -p 3000:3000 \
-              $REGISTRY/app:${{ inputs.release_version }}_latest
+            
+            docker run -d \
+              --name app \
+              -p 3000:3000 \
+              ${{ env.REGISTRY }}/app:${{ github.event.inputs.release_version }}_latest
+            
+            sleep 5
+            docker ps --filter "name=app" --format "table {{.Names}}\t{{.Status}}"
 
-      # Комментарий в Issue
-      - name: Add deploy comment
-        uses: actions/github-script@v6
-        with:
-          script: |
-            // Поиск Issue релиза
-            const { data: issues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'all'
-            });
-            
-            const releaseIssue = issues.find(issue => 
-              issue.title.includes(`Release ${{ inputs.release_version }}`)
-            );
-            
-            if (releaseIssue) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: releaseIssue.number,
-                body: `🚀 Deployed to production!\n\n` +
-                      `**Date:** ${new Date().toISOString()}\n` +
-                      `**By:** ${context.actor}`
-              });
-            }
+      - name: Find release issue
+        id: find-issue
+        run: |
+          BASE_VERSION=$(echo "${{ github.event.inputs.release_version }}" | sed 's/_fix.*//')
+          
+          type -p gh >/dev/null || sudo apt-get install -y gh
+          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+          
+          ISSUE_ID=$(gh issue list --search "Release v${BASE_VERSION}" --json number -q '.[0].number')
+          
+          if [ -z "$ISSUE_ID" ]; then
+            echo "::warning::Release issue for v${BASE_VERSION} not found!"
+            echo "issue_number=0" >> $GITHUB_OUTPUT
+          else
+            echo "Found issue #$ISSUE_ID"
+            echo "issue_number=$ISSUE_ID" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Add deployment comment
+        if: steps.find-issue.outputs.issue_number != '0'
+        run: |
+          type -p gh >/dev/null || sudo apt-get install -y gh
+          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+          
+          COMMENT="🚀 **Deployed to production**\n\n"\
+                  "**Version:** ${{ github.event.inputs.release_version }}_latest\n"\
+                  "**Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')\n"\
+                  "**By:** ${{ github.actor }}\n"\
+                  "**Environment:** Production\n"\
+                  "**Access URL:** http://${{ secrets.VM_IP }}:3000/hw/store"
+          
+          gh issue comment ${{ steps.find-issue.outputs.issue_number }} --body "$COMMENT"
