@@ -39,6 +39,8 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
+            sudo groupadd docker
+            sudo usermod -aG docker ${USER}
             docker stop app || true
             docker rm app || true
             docker pull $IMAGE_NAME:${RELEASE_VERSION}_latest
