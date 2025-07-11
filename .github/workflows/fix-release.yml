@@ -20,13 +20,45 @@ jobs:
         with:
           node-version: "18"
 
-  # 2. Сборка и пуш фикса
+  # 2. Получение номера фикса
+  compute_fix_number:
+    runs-on: ubuntu-latest
+    outputs:
+      fix_number: ${{ steps.set_fix_number.outputs.fix_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute fix tag from input version
+        id: set_fix_number
+        env:
+          BASE_TAG: ${{ github.event.inputs.version }}
+        run: |
+          git fetch --tags
+
+          echo "Base version from input: $BASE_TAG"
+
+          FIX_TAGS=$(git tag | grep "^${BASE_TAG}-fix\." || true)
+
+          if [[ -z "$FIX_TAGS" ]]; then
+            FIX_NUMBER=1
+          else
+            FIX_NUMBER=$(echo "$FIX_TAGS" | sed -E "s/^${BASE_TAG}-fix\.//" | sort -n | tail -n1)
+            FIX_NUMBER=$((FIX_NUMBER + 1))
+          fi
+          echo "fix_number=$FIX_TAG" >> $GITHUB_OUTPUT
+
+  # 3. Сборка и пуш фикса
   build-and-push-fix:
-    needs: lint-test
+    needs:
+      - lint-test
+      - compute_fix_number
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.event.inputs.version }}
-      FIX_NO: ${{ github.run_number }}
+      FIX_NO: ${{ needs.compute_fix_tag.outputs.fix_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,7 +76,7 @@ jobs:
           git tag ${{ env.VERSION }}_fix${{ env.FIX_NO }}
           git push origin ${{ env.VERSION }}_fix${{ env.FIX_NO }}
 
-  # 3. Найти релизный Issue
+  # 4. Найти релизный Issue
   find-issue:
     needs: build-and-push-fix
     runs-on: ubuntu-latest
@@ -70,13 +102,15 @@ jobs:
             }
             core.setOutput("issue_number", match.number);
 
-  # 4. Прокомментировать Issue фиксом
+  # 5. Прокомментировать Issue фиксом
   comment-on-issue:
-    needs: find-issue
+    needs:
+      - find-issue
+      - compute_fix_number
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.event.inputs.version }}
-      FIX_NO: ${{ github.run_number }}
+      FIX_NO: ${{ needs.compute_fix_tag.outputs.fix_tag }}
       REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
       ISSUE_NUMBER: ${{ needs.find-issue.outputs.issue_number }}
     steps:
