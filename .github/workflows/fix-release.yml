@@ -38,7 +38,7 @@ jobs:
         run: |
           git fetch --tags
 
-          FIX_TAGS=$(git tag | grep "^${BASE_TAG}-fix\." || true)
+          FIX_TAGS=$(git tag | grep "^${BASE_TAG}_fix\." || true)
 
           if [[ -z "$FIX_TAGS" ]]; then
             FIX_NUMBER=1
