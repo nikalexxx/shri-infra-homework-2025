@@ -37,7 +37,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Login to Yandex Container Registry
         run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin ${{ env.REGISTRY_HOST }}
