@@ -11,14 +11,49 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      IMAGE: cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.event.inputs.version }}_latest
+
     steps:
+      - name: Docker login to Yandex Cloud
+        run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+
+      - name: Check if image exists
+        run: |
+          docker manifest inspect "$IMAGE" > /dev/null 2>&1 \
+            || (echo "Image not found: $IMAGE" && exit 1)
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_IP }}
-          username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            docker pull cr.yandex/cr.yandex/crp5onllu1dr93ho6783/app:${{ github.event.inputs.version }}_latest
-            docker stop shri || true && docker rm shri || true
-            docker run -d -p 80:3000 --name shri cr.yandex/cr.yandex/crp5onllu1dr93ho6783/app:${{ github.event.inputs.version }}_latest
+            docker pull $IMAGE
+            docker stop shri || true
+            docker rm shri || true
+            docker run -d -p 80:3000 --name shri $IMAGE
+
+      - name: Comment on GitHub Issue
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        with:
+          script: |
+            const today = new Date().toISOString().split("T")[0];
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+
+            const issue = issues.find(i => i.title.includes(`версия ${process.env.VERSION}`) || i.title.includes(`v${process.env.VERSION}`));
+            if (issue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `✅ Прод выкачен @${{ github.actor }} от ${today}.\nОбраз: \`${process.env.IMAGE}\``
+              });
+            }
