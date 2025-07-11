@@ -29,7 +29,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.run_number }}
-      REGISTRY_HOST: cr.yandex
       REESTR_ID: ${{ secrets.REESTR_ID }}
       APP_NAME: app
     steps:
