@@ -47,8 +47,7 @@ jobs:
           docker buildx build \
             --tag $REGISTRY_HOST/$REESTR_ID/$APP_NAME:$VERSION \
             --tag $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_latest \
-            --push \
-            .
+            --push .
 
       - name: Push images
         run: |
