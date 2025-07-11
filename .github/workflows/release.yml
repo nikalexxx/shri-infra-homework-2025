@@ -41,8 +41,10 @@ jobs:
 
       - name: Build and Push Docker image
         run: |
-          -t ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION} \
-          -t ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}_latest \
+          docker buildx build \
+            --tag ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION} \
+            --tag ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}_latest \
+            --push \
             .
 
       - name: Push images
