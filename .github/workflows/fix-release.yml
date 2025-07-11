@@ -1,0 +1,60 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to fix (e.g. 12)"
+        required: true
+
+jobs:
+  fix-release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.version }}
+      FIX_NUMBER: ${{ github.run_number }}
+      REGISTRY: cr.yandex/<ваш-идентификатор-реестра>/app
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run type checks and tests
+        run: |
+          npm run lint
+          npm test
+
+      - name: Build Docker image
+        run: |
+          docker build -t $REGISTRY:${VERSION}_fix${FIX_NUMBER} .
+          docker tag $REGISTRY:${VERSION}_fix${FIX_NUMBER} $REGISTRY:${VERSION}_latest
+
+      - name: Login to Yandex Container Registry
+        run: echo "${{ secrets.YC_CR_PASSWORD }}" | docker login -u oauth --password-stdin cr.yandex
+
+      - name: Push Docker image
+        run: |
+          docker push $REGISTRY:${VERSION}_fix${FIX_NUMBER}
+          docker push $REGISTRY:${VERSION}_latest
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git tag v${VERSION}_fix${FIX_NUMBER}
+          git push origin v${VERSION}_fix${FIX_NUMBER}
+
+      - name: Comment on GitHub issue
+        run: |
+          gh issue comment $(gh issue list --limit 1 --search "Release v$VERSION" --json number --jq '.[0].number') \
+            --body "🛠 Fix #${FIX_NUMBER} for Release **v${VERSION}**\n- 📅 Date: $(date -u)\n- 👤 Author: @${{ github.actor }}\n- 🐳 Docker Image: \`${REGISTRY}:${VERSION}_fix${FIX_NUMBER}\`"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

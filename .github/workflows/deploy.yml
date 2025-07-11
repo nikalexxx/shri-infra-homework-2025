@@ -1,0 +1,24 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH to server and deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            docker login -u oauth -p ${{ secrets.YC_CR_PASSWORD }} cr.yandex
+            docker pull cr.yandex/your-registry-id/app:${{ github.event.inputs.version }}_latest
+            docker stop app || true && docker rm app || true
+            docker run -d --name app -p 80:3000 cr.yandex/your-registry-id/app:${{ github.event.inputs.version }}_latest

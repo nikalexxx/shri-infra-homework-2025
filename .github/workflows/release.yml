@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+      REGISTRY: cr.yandex/your-registry-id/app
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+      - name: Create release branch
+        run: |
+          git checkout -b releases/${{ env.VERSION }}
+          git push origin releases/${{ env.VERSION }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t $REGISTRY:${{ env.VERSION }} .
+          docker tag $REGISTRY:${{ env.VERSION }} $REGISTRY:${{ env.VERSION }}_latest
+
+      - name: Login to Yandex Container Registry
+        run: |
+          echo "${{ secrets.YC_CR_PASSWORD }}" | docker login --username oauth --password-stdin cr.yandex
+
+      - name: Push image
+        run: |
+          docker push $REGISTRY:${{ env.VERSION }}
+          docker push $REGISTRY:${{ env.VERSION }}_latest
+
+      - name: Create Git tag
+        run: |
+          git tag v${{ env.VERSION }}
+          git push origin v${{ env.VERSION }}
+
+      - name: Create GitHub Issue
+        run: gh issue create --title "Release v${{ env.VERSION }}" \
+             --body "Release created by ${{ github.actor }} on ${{ github.event.repository.updated_at }}\n\nImage: $REGISTRY:${{ env.VERSION }}" \
+             --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update CHANGELOG.md
+        run: |
+          echo -e "## v${{ env.VERSION }}\n\n- See commits since last release\n" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add CHANGELOG.md
+          git commit -m "docs: update CHANGELOG for v${{ env.VERSION }}"
+          git push origin releases/${{ env.VERSION }}
