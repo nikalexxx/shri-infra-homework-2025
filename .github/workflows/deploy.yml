@@ -32,6 +32,7 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
+            APP_PORT=3000
             echo '${{ secrets.YC_SA_KEY }}' | docker login --username json_key --password-stdin cr.yandex
             docker stop shri-infra || true
             docker rm shri-infra || true
