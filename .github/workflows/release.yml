@@ -8,7 +8,7 @@ env:
 
 jobs:
   lint-test:
-    name: Create Release
+    name: Lint & Test
     runs-on: ubuntu-latest
 
     permissions:
@@ -78,13 +78,13 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t ${{ env.REGISTRY }}:${{ needs.create-release.outputs.version }} .
-          docker tag ${{ env.REGISTRY }}:${{ needs.create-release.outputs.version }} ${{ env.REGISTRY }}:${{ needs.create-release.outputs.version }}_latest
+          docker build -t ${{ env.REGISTRY }}:${{ github.run_number }} .
+          docker tag ${{ env.REGISTRY }}:${{ github.run_number }} ${{ env.REGISTRY }}:${{ github.run_number }}_latest
 
       - name: Push Docker image
         run: |
-          docker push ${{ env.REGISTRY }}:${{ needs.create-release.outputs.version }}
-          docker push ${{ env.REGISTRY }}:${{ needs.create-release.outputs.version }}_latest
+          docker push ${{ env.REGISTRY }}:${{ github.run_number }}
+          docker push ${{ env.REGISTRY }}:${{ github.run_number }}_latest
 
   create-git-tag:
     name: Create Git tag
@@ -96,14 +96,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.create-release.outputs.branch }}
+          ref: "releases/$VERSION"
 
       - name: Create Git tag
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git tag v${{ needs.create-release.outputs.version }}
-          git push origin v${{ steps.vars.outputs.version }}
+          git tag v${{ github.run_number }}
+          git push origin v${{ github.run_number }}
 
   generate-issue:
     name: Generate Issue
@@ -115,7 +115,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.create-release.outputs.branch }}
+          ref: "releases/$VERSION"
 
       - name: Create GitHub Issue with release info
         run: |
@@ -130,9 +130,9 @@ jobs:
           else
             COMMITS=$(git log --pretty=format:"- %s")
           fi
-          BODY="## Релиз v${{ steps.vars.outputs.version }}\n\n**Дата**: $(date +'%Y-%m-%d')\n**Автор**: @${{ github.actor }}\n\n**Коммиты:**\n$COMMITS\n\n**Образы:**\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}\n- ${{ env.REGISTRY }}:${{ steps.vars.outputs.version }}_latest"
+          BODY="## Релиз v${{ github.run_number }}\n\n**Дата**: $(date +'%Y-%m-%d')\n**Автор**: @${{ github.actor }}\n\n**Коммиты:**\n$COMMITS\n\n**Образы:**\n- ${{ env.REGISTRY }}:${{ github.run_number }}\n- ${{ env.REGISTRY }}:${{ github.run_number }}_latest"
           echo -e "$BODY" > body.md
-          gh issue create --title "Релиз v${{ steps.vars.outputs.version }}" --body-file body.md
+          gh issue create --title "Релиз v${{ github.run_number }}" --body-file body.md
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
@@ -146,7 +146,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.create-release.outputs.branch }}
+          ref: "releases/$VERSION"
 
       - name: Generate changelog
         run: |
@@ -157,7 +157,7 @@ jobs:
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           echo "Previous tag: $PREV_TAG"
 
-          echo -e "## v${{ steps.vars.outputs.version }} - $(date +'%Y-%m-%d')\n" > temp_changelog.md
+          echo -e "## v${{ github.run_number }} - $(date +'%Y-%m-%d')\n" > temp_changelog.md
 
           if [ -n "$PREV_TAG" ]; then
             git log "$PREV_TAG"..HEAD --pretty=format:"- %s" >> temp_changelog.md
@@ -173,16 +173,16 @@ jobs:
 
       - name: Commit updated changelog to temp branch
         run: |
-          git checkout -b changelog/update-v${{ steps.vars.outputs.version }}
+          git checkout -b changelog/update-v${{ github.run_number }}
           git add CHANGELOG.md
-          git commit -m "chore: update CHANGELOG for v${{ steps.vars.outputs.version }}"
-          git push origin changelog/update-v${{ steps.vars.outputs.version }}
+          git commit -m "chore: update CHANGELOG for v${{ github.run_number }}"
+          git push origin changelog/update-v${{ github.run_number }}
 
       - name: Make Pull Request
         uses: actions/github-script@v6
         with:
           script: |
-            const changelog_version = `${{ steps.vars.outputs.version }}`;
+            const changelog_version = `${{ github.run_number }}`;
             const branch_name = `changelog/update-v${changelog_version}`;
             const base = 'main';
             const title = `chore: update CHANGELOG for v${changelog_version}`;
