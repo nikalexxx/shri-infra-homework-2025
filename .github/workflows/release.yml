@@ -128,6 +128,7 @@ jobs:
           else
             COMMITS=$(git log --pretty=format:"- %s")
           fi
+          echo "Commits: $COMMITS"
           BODY="## Релиз v${{ github.run_number }}\n\n**Дата**: $(date +'%Y-%m-%d')\n**Автор**: @${{ github.actor }}\n\n**Коммиты:**\n$COMMITS\n\n**Образы:**\n- ${{ env.REGISTRY }}:${{ github.run_number }}\n- ${{ env.REGISTRY }}:${{ github.run_number }}_latest"
           echo -e "$BODY" > body.md
           gh issue create --title "Релиз v${{ github.run_number }}" --body-file body.md
@@ -149,6 +150,8 @@ jobs:
       - name: Generate changelog
         run: |
           set -eux
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
           git fetch --tags
           PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+$" | head -n1)
           echo "Previous tag: $PREV_TAG"
@@ -169,6 +172,9 @@ jobs:
 
       - name: Commit updated changelog to temp branch
         run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          
           git checkout -b changelog/update-v${{ github.run_number }}
           git add CHANGELOG.md
           git commit -m "chore: update CHANGELOG for v${{ github.run_number }}"
