@@ -11,8 +11,8 @@ env:
   DOCKER_REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
 
 jobs:
-  hotfix:
-    name: Create Hotfix
+  fix:
+    name: Create Fix
     runs-on: ubuntu-latest
     
     env:
@@ -47,6 +47,8 @@ jobs:
           
       - name: Tag hotfix
         run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
           git tag v$HOTFIX_TAG
           git push origin v$HOTFIX_TAG
           
@@ -64,6 +66,6 @@ jobs:
         if: github.event.repository.has_issues
         run: |
           gh issue comment $(gh issue list --search "Release v$BASE_VERSION" --json number --jq '.[0].number') \
-            --body "$(printf "### Hotfix v%s\n\n**Date:** %s\n**Author:** %s\n\n**Changes:**\n%s\n\n**Docker Image:**\n%s:%s" "$HOTFIX_TAG" "$(date '+%Y-%m-%d %H:%M')" "${{ github.actor }}" "${{ steps.hotfix-notes.outputs.notes }}" "$DOCKER_REGISTRY" "$HOTFIX_TAG")"
+            --body "$(printf "### Fix v%s\n\n**Date:** %s\n**Author:** %s\n\n**Changes:**\n%s\n\n**Docker Image:**\n%s:%s" "$HOTFIX_TAG" "$(date '+%Y-%m-%d %H:%M')" "${{ github.actor }}" "${{ steps.hotfix-notes.outputs.notes }}" "$DOCKER_REGISTRY" "$HOTFIX_TAG")"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
