@@ -45,10 +45,10 @@ jobs:
 
       - name: Build and push Docker images
         run: |
-          docker build -t ${IMAGE_NAME}:${VERSION} .
-          docker tag ${IMAGE_NAME}:${VERSION} ${IMAGE_NAME}:${VERSION}_latest
-          docker push ${IMAGE_NAME}:${VERSION}
-          docker push ${IMAGE_NAME}:${VERSION}_latest
+          docker build -t ${{ env.IMAGE_NAME }}:${{ env.VERSION }} .
+          docker tag ${{ env.IMAGE_NAME }}:${{ env.VERSION }} ${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest
+          docker push ${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          docker push ${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest
 
       - name: Create and push git tag
         run: |
