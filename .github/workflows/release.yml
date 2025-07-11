@@ -41,10 +41,11 @@ jobs:
 
       - name: Build & Tag image
         run: |
-          docker build \
-            -t ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }} \
-            -t ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }}_latest \
-            .
+          docker buildx build \
+          --tag cr.yandex/${{ secrets.REESTR_ID }}/app:${VERSION} \
+          --tag cr.yandex/${{ secrets.REESTR_ID }}/app:${VERSION}_latest \
+          --push \
+          .
 
       - name: Push images
         run: |
