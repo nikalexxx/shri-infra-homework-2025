@@ -46,7 +46,8 @@ jobs:
         if: github.event.repository.has_issues
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
-          gh issue comment $(gh issue list --search "Release v$RELEASE_VERSION" --json number --jq '.[0].number') \
+          gh issue comment $(gh issue list --repo "$GITHUB_REPOSITORY" --search "Release v$RELEASE_VERSION" --json number --jq '.[0].number') \
             --body "$(printf "### Deployment Status\n\n**Environment:** Production\n**Status:** Success\n**Date:** %s\n**Author:** %s\n\n**Access URL:**\nhttp://%s:%s/hw/store" "$(date '+%Y-%m-%d %H:%M')" "${{ github.actor }}" "${{ secrets.VM_IP }}" "3000")"
