@@ -36,9 +36,10 @@ jobs:
         env:
           YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
         run: |
-          echo "$YC_SA_KEY" > key.json
-          yc config set service-account-key key.json
-          yc container registry configure-docker
+          echo "$YC_SA_KEY" | docker login \
+            --username json_key \
+            --password-stdin \
+            cr.yandex
           docker build -t $REGISTRY/app:${{ inputs.release_version }}_fix$FIX_NUMBER .
           docker tag $REGISTRY/app:${{ inputs.release_version }}_fix$FIX_NUMBER $REGISTRY/app:${{ inputs.release_version }}_latest
           docker push $REGISTRY/app:${{ inputs.release_version }}_fix$FIX_NUMBER
