@@ -110,13 +110,6 @@ jobs:
                 ).filter(msg => !msg.includes("Merge branch"));
               }
 
-              // Фильтруем коммиты, связанные с релизом
-              const filteredCommits = commitMessages.filter(msg => 
-                !msg.toLowerCase().includes("changelog") &&
-                !msg.toLowerCase().includes("release") &&
-                !msg.startsWith("Merge pull request")
-              );
-
               // Создаем Issue
               const issueBody = `**Version:** ${process.env.VERSION}\n\n` +
                                `**Author:** ${context.actor}\n\n` +
