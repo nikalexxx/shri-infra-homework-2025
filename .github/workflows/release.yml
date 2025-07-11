@@ -39,14 +39,25 @@ jobs:
       - name: Build and push Docker image
         env:
           YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+          REGISTRY: cr.yandex/${{ secrets.REGISTRY_ID }}
+          VERSION: ${{ github.run_number }}
         run: |
+          if ! command -v yc &> /dev/null; then
+            curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+            echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+          fi
+          
           echo "$YC_SA_KEY" > key.json
           yc config set service-account-key key.json
+          
           yc container registry configure-docker
+          
           docker build -t $REGISTRY/app:$VERSION .
           docker tag $REGISTRY/app:$VERSION $REGISTRY/app:${VERSION}_latest
           docker push $REGISTRY/app:$VERSION
           docker push $REGISTRY/app:${VERSION}_latest
+          
+          rm key.json
 
       # Создание тега
       - name: Create tag
