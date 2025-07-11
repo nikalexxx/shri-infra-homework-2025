@@ -1,0 +1,125 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to fix'
+        required: true
+        type: string
+      issue_number:
+        description: 'Issue number'
+        required: true
+        type: number
+
+jobs:
+  test-type-check:
+    name: Fix for release ${{ inputs.release_version }}
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
+      RELEASE_VERSION: ${{ inputs.release_version }}
+      FIX_VERSION: fix${{ github.run_number }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Run type check
+        run: npm run lint
+
+  login-to-registry:
+    name: Login to Yandex Cloud Container Registry
+    runs-on: ubuntu-latest
+
+    needs: test-type-check
+
+    env:
+      IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
+      RELEASE_VERSION: ${{ inputs.release_version }}
+      FIX_VERSION: fix${{ github.run_number }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Yandex Cloud Container Registry
+        run: |
+          echo "${{ secrets.YANDEX_PASSWORD }}" | docker login \
+            --username oauth \
+            --password-stdin \
+            cr.yandex
+
+      - name: Build Docker image
+        run: |
+          docker build -t $IMAGE_NAME:${RELEASE_VERSION}_${FIX_VERSION} .
+          docker tag $IMAGE_NAME:${RELEASE_VERSION}_${FIX_VERSION} $IMAGE_NAME:${RELEASE_VERSION}_latest
+
+      - name: Push Docker image with fix and latest tags
+        run: |
+          docker push $IMAGE_NAME:${RELEASE_VERSION}_${FIX_VERSION}
+          docker push $IMAGE_NAME:${RELEASE_VERSION}_latest
+
+  generate-git-tag:
+    name: Generate Git tag
+    runs-on: ubuntu-latest
+
+    needs: login-to-registry
+
+    env:
+      IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
+      RELEASE_VERSION: ${{ inputs.release_version }}
+      FIX_VERSION: fix${{ github.run_number }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create fix tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag ${RELEASE_VERSION}_${FIX_VERSION}
+          git push origin ${RELEASE_VERSION}_${FIX_VERSION}
+
+      - name: Get latest previous tag
+        id: prevtag
+        run: |
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^${RELEASE_VERSION}(_fix[0-9]+)?$" | head -n 1)
+          echo "PREVIOUS_TAG=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: Get commit messages since previous tag
+        id: changelog
+        run: |
+          COMMITS=$(git log ${{ steps.prevtag.outputs.PREVIOUS_TAG }}..HEAD --pretty=format:"- %s")
+          echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Comment to existing release Issue
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ inputs.issue_number }}
+          body: |
+            **Fix for Release ${{ env.RELEASE_VERSION }}**
+            
+            Date: ${{ github.event.date || github.event.head_commit.timestamp }}
+            Author: @${{ github.actor }}
+            Docker Image: `${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}_${{ env.FIX_VERSION }}`
+
+            Commits since last tag `${{ steps.prevtag.outputs.PREVIOUS_TAG }}`:
+            ${{ steps.changelog.outputs.COMMITS }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
