@@ -42,12 +42,13 @@ jobs:
         run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin ${REGISTRY_HOST}
 
       - name: Build and Push Docker image
-        run: |
-          docker buildx build \
-            --tag ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION} \
-            --tag ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}_latest \
-            --push \
-            .
+        uses: docker/build-push-action@v5
+        with:
+        context: .
+        push: true
+        tags: |
+          ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}
+          ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}_latest
 
       - name: Push images
         run: |
