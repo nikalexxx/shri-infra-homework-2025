@@ -1,0 +1,116 @@
+name: Release Fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Версия релиза (пример: 42)"
+        required: true
+        type: string
+
+env:
+  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+  IMAGE_NAME: app
+  RELEASE:  ${{ inputs.release_version }}
+  FIX_ID:   ${{ github.run_number }}
+
+jobs:
+  lint:
+    name: Run Linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: npm ci
+      - run: npm run test
+
+  fix-build:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: releases/${{ env.RELEASE }}
+          fetch-depth: 0
+
+      - name: Login to Yandex CR
+        uses: docker/login-action@v2
+        with:
+          registry: cr.yandex
+          username: oauth
+          password: ${{ secrets.YC_CR_TOKEN }}
+
+      - name: Build and tag Docker image
+        run: |
+          IMAGE_FIX="$REGISTRY/$IMAGE_NAME:${RELEASE}_fix${FIX_ID}"
+          IMAGE_LATEST="$REGISTRY/$IMAGE_NAME:${RELEASE}_latest"
+
+          docker build -t "$IMAGE_FIX" .
+          docker tag "$IMAGE_FIX" "$IMAGE_LATEST"
+
+          docker push "$IMAGE_FIX"
+          docker push "$IMAGE_LATEST"
+
+      - name: Git tag for fix
+        run: |
+          git config user.name  github-actions
+          git config user.email github-actions@github.com
+          git tag ${RELEASE}_fix${FIX_ID}
+          git push origin ${RELEASE}_fix${FIX_ID}
+
+      - name: Find release Issue number
+        id: find_issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NUM=$(gh issue list --state open --search "Release ${RELEASE}" --json number -q '.[0].number')
+          echo "number=$NUM" >> $GITHUB_OUTPUT
+
+      - name: Get previous tag
+        id: prev
+        run: |
+          PREV=$(git tag --sort=-creatordate | grep -E "^${RELEASE}(_fix[0-9]+)?$" | head -n 1)
+          echo "tag=$PREV" >> $GITHUB_OUTPUT
+
+      - name: Build changelog chunk
+        id: log
+        run: |
+          if [ -z "${{ steps.prev.outputs.tag }}" ]; then
+            RANGE_LOG=$(git log --oneline)
+          else
+            RANGE_LOG=$(git log ${{ steps.prev.outputs.tag }}..HEAD --oneline)
+          fi
+          echo "$RANGE_LOG" > changes.txt
+          printf "log<<EOF\n%s\nEOF" "$RANGE_LOG" >> $GITHUB_OUTPUT
+
+      - name: Add comment to release Issue
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ steps.find_issue.outputs.number }}
+          body: |
+            **Fix ${{ env.RELEASE }} #${{ env.FIX_ID }}**  
+            Date: $(date '+%Y-%m-%d %H:%M:%S')  
+            Author: @${{ github.actor }}
+
+            **Image:**  
+            `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE }}_fix${{ env.FIX_ID }}`
+
+            **Changes since `${{ steps.prev.outputs.tag || 'initial' }}`**
+            ```
+            ${{ steps.log.outputs.log }}
+            ```

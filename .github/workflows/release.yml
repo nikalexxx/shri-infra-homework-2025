@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+  IMAGE_NAME: app
+  VERSION: ${{ github.run_number }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.x' }
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.x' }
+      - run: npm ci
+      - run: npm run test
+
+  release:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+
+    steps:
+    - name: Checkout main with full history
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: main
+
+    - name: Detect previous release tag
+      id: prev
+      run: |
+        PREV=$(git tag --list --sort=-creatordate '[0-9]*' | head -n1 || true)
+        echo "tag=$PREV" >> $GITHUB_OUTPUT
+
+    - name: Generate changelog section
+      id: changelog
+      run: |
+        if [ -z "${{ steps.prev.outputs.tag }}" ]; then
+          LOG=$(git log --oneline)
+        else
+          LOG=$(git log ${{ steps.prev.outputs.tag }}..HEAD --oneline)
+        fi
+        echo "$LOG" > changes.txt
+        printf "log<<EOF\n%s\nEOF" "$LOG" >> $GITHUB_OUTPUT
+
+    - name: Create tag and release branch
+      run: |
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git tag $VERSION
+        git checkout -b releases/$VERSION
+        git push origin releases/$VERSION $VERSION
+
+    - name: Update CHANGELOG.md
+      run: |
+        {
+          echo "## Version $VERSION – $(date +'%Y-%m-%d')"
+          echo ""
+          cat changes.txt
+          echo ""
+          [ -f CHANGELOG.md ] && cat CHANGELOG.md
+        } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+        git add CHANGELOG.md
+        git commit -m "chore: update changelog for $VERSION"
+        git push origin releases/$VERSION
+
+    - name: Login to Yandex Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: cr.yandex
+        username: oauth
+        password: ${{ secrets.YC_CR_TOKEN }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest
+
+    - name: Build issue body
+      id: issue_body
+      run: |
+        {
+          echo "### Release \`${{ env.VERSION }}\`"
+          echo ""
+          echo "**Date:** $(date +'%Y-%m-%d %H:%M:%S')"
+          echo "**Author:** @${{ github.actor }}"
+          echo ""
+          echo "#### Docker image"
+          echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}\`"
+          echo ""
+          echo "#### Changes"
+          cat changes.txt
+        } > release_issue.md
+
+    - name: Create GitHub Issue
+      uses: peter-evans/create-issue-from-file@v4
+      with:
+        title: "Release ${{ env.VERSION }}"
+        content-filepath: release_issue.md

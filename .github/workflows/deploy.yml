@@ -1,0 +1,100 @@
+name: Deploy to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Версия релиза (например: 42)"
+        required: true
+        type: string
+
+env:
+  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+  IMAGE_NAME: app
+  VERSION: ${{ inputs.release_version }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Login to Yandex CR
+        uses: docker/login-action@v2
+        with:
+          registry: cr.yandex
+          username: oauth
+          password: ${{ secrets.YC_CR_TOKEN }}
+
+      - name: Verify image exists
+        id: check
+        run: |
+          if docker pull $REGISTRY/$IMAGE_NAME:${VERSION}_latest >/dev/null 2>&1; then
+            echo "found=true" >> $GITHUB_OUTPUT
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fail if image missing
+        if: steps.check.outputs.found != 'true'
+        run: |
+          echo "Image $REGISTRY/$IMAGE_NAME:${VERSION}_latest not found"
+          exit 1
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy container on server
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          VERSION: ${{ env.VERSION }}
+          REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+        run: |
+          ssh -i ~/.ssh/id_rsa ${USER}@${HOST} bash -s <<EOF
+            set -e
+            REGISTRY="cr.yandex/$REGISTRY_ID"
+            IMAGE="\$REGISTRY/app:\$VERSION_latest"
+
+            echo "Pulling image: \$IMAGE"
+            docker pull \$IMAGE
+
+            echo "Stopping old container..."
+            docker stop app || true
+            docker rm app || true
+
+            echo "Starting new container..."
+            docker run -d --name app -p 3000:3000 \$IMAGE
+          EOF
+
+      - name: Checkout (нужен gh)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get current datetime
+        id: datetime
+        run: echo "date=$(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+
+      - name: Find release Issue
+        id: issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NUM=$(gh issue list --state open --search "Release ${VERSION}" --json number -q '.[0].number')
+          echo "number=$NUM" >> $GITHUB_OUTPUT
+
+      - name: Comment that release is in prod
+        if: steps.issue.outputs.number != ''
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ steps.issue.outputs.number }}
+          body: |
+            **Released to production**  
+            Version: `${{ env.VERSION }}`  
+            Image: `cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ env.VERSION }}_latest`  
+            Date: ${{ steps.datetime.outputs.date }}  
+            Operator: @${{ github.actor }}
