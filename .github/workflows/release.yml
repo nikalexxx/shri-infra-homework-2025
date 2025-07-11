@@ -6,8 +6,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout
+      - uses: actions/setup-node
         with:
           node-version: 18
       - run: npm ci
@@ -16,8 +16,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout
+      - uses: actions/setup-node
         with:
           node-version: 18
       - run: npm ci
@@ -35,7 +35,7 @@ jobs:
       version: ${{ steps.set-version.outputs.VERSION }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout
         with:
           fetch-depth: 0
 
@@ -47,8 +47,10 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git checkout -b releases/${{ steps.set-version.outputs.VERSION }}
-          git push origin releases/${{ steps.set-version.outputs.VERSION }}
+          git checkout main
+          git pull origin main
+          git switch -c releases/${{ steps.set-version.outputs.VERSION }}
+          git push -u origin releases/${{ steps.set-version.outputs.VERSION }}
 
       - name: Build and push Docker image
         env:
@@ -62,76 +64,60 @@ jobs:
           docker push $REGISTRY/app:${{ steps.set-version.outputs.VERSION }}
           docker push $REGISTRY/app:${{ steps.set-version.outputs.VERSION }}_latest
 
+      - name: Determine last release tag
+        id: find_prev
+        run: |
+          PREV=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "")
+          echo "previous_tag=$PREV" >> $GITHUB_OUTPUT
+
       - name: Create Git tag
         run: |
           git tag v${{ steps.set-version.outputs.VERSION }}
           git push origin v${{ steps.set-version.outputs.VERSION }}
 
-      - name: Create issue and update changelog
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const fs = require('fs');
-            const { execSync } = require('child_process');
+      - name: Build and update changelog
+        id: build_changelog
+        run: |
+          if [ -z "${{ steps.find_prev.outputs.previous_tag }}" ]; then
+            LOG=$(git log main --pretty=format:"- %h: %s" --no-merges)
+          else
+            LOG=$(git log ${{ steps.find_prev.outputs.previous_tag }}..v${VERSION} --pretty=format:"- %h: %s" --no-merges)
+          fi
+          echo "CHANGELOG_BODY<<EOF" >> $GITHUB_ENV
+          echo "$LOG" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          {
+            echo "## v${VERSION} — $(date +'%Y-%m-%d')"
+            echo ""
+            echo "${{ env.CHANGELOG_BODY }}"
+            echo ""
+            cat CHANGELOG.md 2>/dev/null
+          } > CHANGELOG.tmp
+          mv CHANGELOG.tmp CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "docs: update CHANGELOG for v${VERSION}" || echo "No changes to changelog"
+          git push origin releases/${VERSION}
 
-            const version = '${{ steps.set-version.outputs.VERSION }}';
-            const registry = '${{ env.REGISTRY }}';
-            const author = context.actor;
+      - name: Open PR to main for CHANGELOG
+        run: |
+          gh auth login --with-token <<< "${{ secrets.PAT_TOKEN }}"
+          gh pr create \
+            --base main \
+            --head releases/${VERSION} \
+            --title "Release v${VERSION}: update CHANGELOG" \
+            --body "Automated PR to merge updated CHANGELOG for v${VERSION}"
 
-            const { data: tags } = await github.rest.repos.listTags({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 100
-            });
-
-            const releaseTags = tags
-              .filter(tag => tag.name.startsWith('v') && !tag.name.includes('fix'))
-              .sort((a, b) => parseInt(b.name.substring(1)) - parseInt(a.name.substring(1)));
-
-            let commitMessages = [];
-            let baseTag = releaseTags[0]?.name;
-
-            if (baseTag) {
-              const compare = await github.rest.repos.compareCommits({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                base: baseTag,
-                head: 'main'
-              });
-              commitMessages = compare.data.commits.map(c => c.commit.message.split('\n')[0])
-                .filter(msg => !msg.startsWith('Merge'));
-            } else {
-              const commits = await github.paginate(github.rest.repos.listCommits, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                sha: 'main',
-                per_page: 100
-              });
-              commitMessages = commits.map(c => c.commit.message.split('\n')[0])
-                .filter(msg => !msg.startsWith('Merge'));
-            }
-
-            const changelogEntry = `# v${version}\n\n` +
-              commitMessages.map(msg => `- ${msg}`).join('\n') + '\n\n';
-
-            const changelogPath = 'CHANGELOG.md';
-            let previous = fs.existsSync(changelogPath) ? fs.readFileSync(changelogPath, 'utf8') : '';
-            fs.writeFileSync(changelogPath, changelogEntry + previous);
-
-            execSync('git config user.name "GitHub Actions"');
-            execSync('git config user.email "actions@github.com"');
-            execSync('git add CHANGELOG.md');
-            execSync(`git commit -m "Update CHANGELOG for v${version}"`);
-            execSync(`git push origin releases/${version}`);
-
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Release ${version}`,
-              body:
-                `**Version:** ${version}\n\n` +
-                `**Author:** ${author}\n\n` +
-                `**Date:** ${new Date().toISOString()}\n\n` +
-                `**Commits since last release:**\n${env.COMMITS.map(m => `- ${m}`).join('\n')}\n\n` +
-                `**Docker image:** \`${registry}/app:${version}\``
-            });
+      - name: Create GitHub Issue for Release Notes
+        run: |
+          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+          ISSUE_BODY=$(printf "## Release v%s\n\n**Date:** %s\n**Author:** %s\n**Docker image:** `%s:%s`\n\n**Commits:**\n%s" \
+            "${VERSION}" \
+            "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+            "${{ github.actor }}" \
+            "cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app" \
+            "${VERSION}" \
+            "${{ env.CHANGELOG_BODY }}")
+          gh issue create \
+            --title "Release v${VERSION}" \
+            --body "$ISSUE_BODY" \
+            --label "release"
