@@ -74,38 +74,29 @@ jobs:
             const fs = require('fs');
             const { execSync } = require('child_process');
 
-            const version = '${{ steps.set-version.outputs.VERSION }}';
-            const registry = '${{ env.REGISTRY }}';
-            const author = context.actor;
-
-            const { data: tags } = await github.rest.repos.listTags({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 100
-            });
+            const version = process.env.VERSION;
+  
+              const releaseTagNames = tags
+              .map(t => t.name)
+              .filter(name => name.startsWith('v') && !name.includes('fix'))
+              .sort((a, b) => parseInt(b.slice(1), 10) - parseInt(a.slice(1), 10));
               
-              const releaseTags = tags
-              .filter(t => t.name.startsWith('v') && !t.name.includes('fix'))
-              .sort((a, b) =>
-              parseInt(b.name.slice(1), 10) - parseInt(a.name.slice(1), 10)
-              );
-              
-              const baseTag = releaseTags[0]?.name;
-              console.log('Last release tag:', baseTag || '«никогда не выпускали»');
+              const previousTag = releaseTagNames.find(name => name !== `v${version}`);
+              console.log('Previous release tag:', previousTag || '«никогда не выпускали»');
               
               let compare;
-              if (baseTag) {
+              if (previousTag) {
               compare = await github.rest.repos.compareCommits({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            base: baseTag,
+            base: previousTag,
             head: context.sha
             });
             } else {
               compare = await github.rest.repos.compareCommits({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            base: context.sha + '^',
+            base: `${context.sha}^`,
             head: context.sha
             });
             }
@@ -116,8 +107,9 @@ jobs:
               
               console.log(`Found ${commitMessages.length} new commits:`);
               commitMessages.forEach(m => console.log('  •', m));
-
-            const changelogEntry = `# v${version}\n\n` +
+              
+              
+              const changelogEntry = `# v${version}\n\n` +
               commitMessages.map(msg => `- ${msg}`).join('\n') + '\n\n';
 
             const changelogPath = 'CHANGELOG.md';
