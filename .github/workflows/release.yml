@@ -68,7 +68,6 @@ jobs:
       - name: Determine last release tag
         id: find_prev
         run: |
-          # Игнорируем фикс-теги при поиске последнего релиза
           PREV=$(git tag --list 'v*' --sort=-v:refname | grep -v '_fix' | head -n 1)
           echo "previous_tag=$PREV" >> $GITHUB_OUTPUT
           echo "Previous tag: $PREV"
@@ -90,12 +89,10 @@ jobs:
             LOG=$(git log ${PREV}..HEAD --pretty=format:"- %s" --no-merges | grep -v "CHANGELOG" | grep -v "Update dependencies")
           fi
           
-          # Форматируем для CHANGELOG
           echo "CHANGELOG_BODY<<EOF" >> $GITHUB_ENV
           echo "$LOG" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
           
-          # Обновляем CHANGELOG.md
           {
             echo "## v${VERSION} — $(date -u +'%Y-%m-%d')"
             echo ""
@@ -113,15 +110,11 @@ jobs:
         env:
           VERSION: ${{ steps.set-version.outputs.VERSION }}
         run: |
-          # Установка GitHub CLI
           type -p gh >/dev/null || sudo apt-get install -y gh
-          
-          # Авторизация
           gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
           
-          # Формирование тела issue
           ISSUE_BODY=$(cat <<EOF
-          ## Release v${VERSION}
+          ## Release v${VERSION}💫
           
           **Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
           **Author:** ${{ github.actor }}
@@ -132,7 +125,6 @@ jobs:
           EOF
           )
           
-          # Создание issue
           gh issue create \
             --title "Release v${VERSION}" \
             --body "$ISSUE_BODY" \
