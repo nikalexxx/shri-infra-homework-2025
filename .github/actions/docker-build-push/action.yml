@@ -3,11 +3,18 @@ description: |
   Собирает Docker-образ и пушит в Yandex Container Registry
 inputs:
   registry-id:
+    description: Идентификатор реестра Yandex Container Registry
     required: true
   app-name:
+    description: Имя приложения (имя образа)
     required: true
   tags:
+    description: Список тегов через пробел, например "13 13_latest"
     required: true
+  ycr-token:
+    description: Токен доступа к Yandex Container Registry
+    required: true
+
 runs:
   using: composite
   steps:
@@ -19,8 +26,9 @@ runs:
 
     - name: Login to Yandex Registry
       run: |
-        echo "${{ secrets.YCR_TOKEN }}" \
+        echo "${{ inputs.ycr-token }}" \
           | docker login --username oauth --password-stdin cr.yandex
+      shell: bash
 
     - name: Build image (first tag)
       run: |
@@ -28,14 +36,17 @@ runs:
         docker build \
           -t cr.yandex/${{ inputs.registry-id }}/${{ inputs.app-name }}:${FIRST_TAG} \
           .
+      shell: bash
 
     - name: Tag & Push all images
       run: |
-        FIRST_TAG=$(echo "${{ inputs.tags }}" | cut -d' ' -f1)
-        for TAG in ${{ inputs.tags }}; do
+        TAGS="${{ inputs.tags }}"
+        FIRST_TAG=$(echo "$TAGS" | cut -d' ' -f1)
+        for TAG in $TAGS; do
           docker tag \
             cr.yandex/${{ inputs.registry-id }}/${{ inputs.app-name }}:${FIRST_TAG} \
             cr.yandex/${{ inputs.registry-id }}/${{ inputs.app-name }}:$TAG
           docker push \
             cr.yandex/${{ inputs.registry-id }}/${{ inputs.app-name }}:$TAG
         done
+      shell: bash
