@@ -1,4 +1,4 @@
-name: Release=
+name: Release
 
 on:
   workflow_dispatch:
@@ -64,10 +64,14 @@ jobs:
           
       - name: Update CHANGELOG.md
         run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          
           echo -e "${{ steps.changelog.outputs.CHANGELOG }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+          
           git add CHANGELOG.md
           git commit -m "Update CHANGELOG for v$DOCKER_TAG"
-          git push
+          git push --set-upstream origin releases/$DOCKER_TAG
           
       - name: Create release issue
         if: github.event.repository.has_issues
