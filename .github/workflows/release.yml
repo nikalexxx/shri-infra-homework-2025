@@ -39,13 +39,16 @@ jobs:
       - name: Login to Yandex Container Registry
         run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin ${{ env.REGISTRY_HOST }}
 
-      - name: Build & Tag image
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Docker image
         run: |
           docker buildx build \
-          --tag cr.yandex/${{ secrets.REESTR_ID }}/app:${VERSION} \
-          --tag cr.yandex/${{ secrets.REESTR_ID }}/app:${VERSION}_latest \
-          --push \
-          .
+            --tag cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }} \
+            --tag cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest \
+            --push \
+            .
 
       - name: Push images
         run: |
