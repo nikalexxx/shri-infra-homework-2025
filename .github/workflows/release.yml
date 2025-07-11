@@ -65,41 +65,66 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            // Получение предыдущего тега
-            const tags = await github.rest.repos.listTags({
-              owner: context.repo.owner,
-              repo: context.repo.repo
-            });
-            const prevTag = tags.data[1]?.name || 'initial';
+            try {
+              // Получаем список тегов
+              const { data: tags } = await github.rest.repos.listTags({
+                owner: context.repo.owner,
+                repo: context.repo.repo
+              });
             
-            // Получение коммитов
-            const commits = await github.rest.repos.compareCommits({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              base: prevTag,
-              head: 'main'
-            });
+              // Определяем предыдущий тег или используем начальный коммит
+              let prevRef = 'HEAD~1'; // По умолчанию сравниваем с предыдущим коммитом
+              if (tags.length > 0) {
+                prevRef = tags[0].name; // Берем последний тег
+              }
             
-            // Создание Issue
-            const issue = await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Release ${process.env.VERSION}`,
-              body: `**Version:** ${process.env.VERSION}\n\n` +
-                    `**Author:** ${context.actor}\n\n` +
-                    `**Commits:**\n${commits.data.commits.map(c => '- ' + c.commit.message).join('\n')}\n\n` +
-                    `**Image:** ${process.env.REGISTRY}/app:${process.env.VERSION}`
-            });
+              // Получаем коммиты
+              let commits = [];
+              try {
+                const compare = await github.rest.repos.compareCommits({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  base: prevRef,
+                  head: 'main'
+                });
+                commits = compare.data.commits;
+              } catch (compareError) {
+                console.log('Не удалось сравнить коммиты, используем последний коммит');
+                const lastCommit = await github.rest.repos.getCommit({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: 'main'
+                });
+                commits = [lastCommit.data];
+              }
             
-            // Обновление CHANGELOG.md
-            const fs = require('fs');
-            let changelog = fs.existsSync('CHANGELOG.md') ? fs.readFileSync('CHANGELOG.md', 'utf8') : '';
-            const newEntry = `# v${process.env.VERSION}\n\n` +
-                            `${commits.data.commits.map(c => '- ' + c.commit.message).join('\n')}\n\n`;
-            fs.writeFileSync('CHANGELOG.md', newEntry + changelog);
+              // Создаем Issue
+              const issue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Release ${process.env.VERSION}`,
+                body: `**Version:** ${process.env.VERSION}\n\n` +
+                      `**Author:** ${context.actor}\n\n` +
+                      `**Commits:**\n${commits.map(c => '- ' + c.commit.message.split('\n')[0]).join('\n')}\n\n` +
+                      `**Image:** ${process.env.REGISTRY}/app:${process.env.VERSION}`
+              });
             
-            // Коммит изменений
-            const { execSync } = require('child_process');
-            execSync('git add CHANGELOG.md');
-            execSync(`git commit -m "Update CHANGELOG for v${process.env.VERSION}"`);
-            execSync(`git push origin releases/${process.env.VERSION}`);
+              // Обновляем CHANGELOG.md
+              const fs = require('fs');
+              let changelog = fs.existsSync('CHANGELOG.md') ? fs.readFileSync('CHANGELOG.md', 'utf8') : '';
+              const newEntry = `# v${process.env.VERSION}\n\n` +
+                              `${commits.map(c => '- ' + c.commit.message.split('\n')[0]).join('\n')}\n\n`;
+              fs.writeFileSync('CHANGELOG.md', newEntry + changelog);
+            
+              // Коммитим изменения
+              const { execSync } = require('child_process');
+              execSync('git config user.name "GitHub Actions"');
+              execSync('git config user.email "actions@github.com"');
+              execSync('git add CHANGELOG.md');
+              execSync(`git commit -m "Update CHANGELOG for v${process.env.VERSION}"`);
+              execSync(`git push origin releases/${process.env.VERSION}`);
+            
+            } catch (error) {
+              console.error('Error creating release:', error);
+              throw error;
+            }
