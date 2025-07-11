@@ -77,11 +77,14 @@ jobs:
 
       - name: Build and update changelog
         id: build_changelog
+        env:
+          VERSION: ${{ steps.set-version.outputs.VERSION }}
+          PREV: ${{ steps.find_prev.outputs.previous_tag }}
         run: |
-          if [ -z "${{ steps.find_prev.outputs.previous_tag }}" ]; then
+          if [ -z "${PREV}" ]; then
             LOG=$(git log main --pretty=format:"- %h: %s" --no-merges)
           else
-            LOG=$(git log ${{ steps.find_prev.outputs.previous_tag }}..v${VERSION} --pretty=format:"- %h: %s" --no-merges)
+            LOG=$(git log ${PREV}..v${VERSION} --pretty=format:"- %h: %s" --no-merges || echo "- Нет новых коммитов")
           fi
           echo "CHANGELOG_BODY<<EOF" >> $GITHUB_ENV
           echo "$LOG" >> $GITHUB_ENV
