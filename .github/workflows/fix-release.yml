@@ -38,12 +38,12 @@ jobs:
         run: |
           git fetch --tags
 
-          FIX_TAGS=$(git tag | grep "^${BASE_TAG}_fix\." || true)
+          FIX_TAGS=$(git tag | grep "^${BASE_TAG}_fix" || true)
 
           if [[ -z "$FIX_TAGS" ]]; then
             FIX_NUMBER=1
           else
-            FIX_NUMBER=$(echo "$FIX_TAGS" | sed -E "s/^${BASE_TAG}-fix\.//" | sort -n | tail -n1)
+            FIX_NUMBER=$(echo "$FIX_TAGS" | sed -E "s/^${BASE_TAG}_fix//" | sort -n | tail -n1)
             FIX_NUMBER=$((FIX_NUMBER + 1))
           fi
           echo "fix_number=$FIX_NUMBER" >> $GITHUB_OUTPUT
