@@ -1,0 +1,34 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to deploy'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check image exists in Container Registry
+        run: |
+          # Проверяем существование образа
+          docker login -u iam -p ${{ secrets.YC_IAM_TOKEN }} cr.yandex
+          docker pull cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest || exit 1
+          
+      - name: Deploy to production
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+              -i ${{ secrets.SSH_PRIVATE_KEY }} \
+              yc-user@${{ secrets.PRODUCTION_IP }} \
+              "docker stop app || true && \
+               docker rm app || true && \
+               docker run -d --name app -p 80:3000 \
+               cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest"
+          
+      - name: Add deployment comment to issue
+        run: |
+          gh issue comment ${{ github.event.inputs.issue_number }} --body "Deployed to production:\n- Date: $(date)\n- Deployed by: ${{ github.actor }}\n- Release version: ${{ github.event.inputs.release_version }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

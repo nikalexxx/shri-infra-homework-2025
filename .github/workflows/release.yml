@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      
+      - name: Run linter and tests
+        run: |
+          npm ci
+          npm run lint
+          npm run test
+          
+      - name: Get release version
+        id: version
+        run: echo "RELEASE_VERSION=${{ github.run_number }}" >> $GITHUB_ENV
+          
+      - name: Create release branch
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'actions@github.com'
+          git checkout -b releases/${{ env.RELEASE_VERSION }}
+          git push origin releases/${{ env.RELEASE_VERSION }}
+          
+      - name: Build and push Docker image
+        run: |
+          docker build . -t cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ env.RELEASE_VERSION }} \
+                         -t cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ env.RELEASE_VERSION }}_latest
+          docker login -u iam -p ${{ secrets.YC_IAM_TOKEN }} cr.yandex
+          docker push cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ env.RELEASE_VERSION }}
+          docker push cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ env.RELEASE_VERSION }}_latest
+          
+      - name: Create version tag
+        run: |
+          git tag -a v${{ env.RELEASE_VERSION }} -m "Release ${{ env.RELEASE_VERSION }}"
+          git push origin v${{ env.RELEASE_VERSION }}
+          
+      - name: Generate changelog
+        run: |
+          # Здесь будет скрипт генерации changelog
+          echo "Changelog for ${{ env.RELEASE_VERSION }}" > CHANGELOG.tmp
+          git log $(git describe --tags --abbrev=0)..HEAD --oneline >> CHANGELOG.tmp
+          echo "" >> CHANGELOG.md
+          cat CHANGELOG.tmp >> CHANGELOG.md
+          rm CHANGELOG.tmp
+          
+      - name: Create release issue
+        run: |
+          gh issue create --title "Release ${{ env.RELEASE_VERSION }}" --body "Release details:\n- Version: ${{ env.RELEASE_VERSION }}\n- Docker image: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ env.RELEASE_VERSION }}\n\nCommits:\n$(git log $(git describe --tags --abbrev=0)..HEAD --oneline)"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
