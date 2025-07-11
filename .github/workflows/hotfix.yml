@@ -35,6 +35,7 @@ jobs:
       - name: Build and push Docker image
         env:
           YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+          REGISTRY: ${{ secrets.REGISTRY_ID }}
         run: |
           echo "$YC_SA_KEY" | docker login \
             --username json_key \

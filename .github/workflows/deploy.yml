@@ -14,11 +14,12 @@ jobs:
       - name: Check image exists
         env:
           YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
-          REGISTRY: cr.yandex/${{ secrets.REGISTRY_ID }}
+          REGISTRY: ${{ secrets.REGISTRY_ID }}
         run: |
-          echo "$YC_SA_KEY" > key.json
-          yc config set service-account-key key.json
-          yc container registry configure-docker
+          echo "$YC_SA_KEY" | docker login \
+            --username json_key \
+            --password-stdin \
+            cr.yandex
           docker pull $REGISTRY/app:${{ inputs.release_version }}_latest
 
       # Деплой на сервер
