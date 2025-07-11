@@ -1,0 +1,48 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Release version"
+        required: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    env:
+      YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+      RELEASE_VERSION: ${{ github.event.inputs.release_version }}
+      FIX_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: releases/${RELEASE_VERSION}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - name: Build Docker image
+        run: |
+          docker build -t cr.yandex/${YC_REGISTRY_ID}/app:${RELEASE_VERSION}_fix${FIX_NUMBER} .
+          docker tag cr.yandex/${YC_REGISTRY_ID}/app:${RELEASE_VERSION}_fix${FIX_NUMBER} cr.yandex/${YC_REGISTRY_ID}/app:${RELEASE_VERSION}_latest
+      - name: Login to Yandex Container Registry
+        run: |
+          echo '${{ secrets.YC_SA_KEY }}' > key.json
+          cat key.json | docker login --username json_key --password-stdin cr.yandex
+      - name: Push Docker images
+        run: |
+          docker push cr.yandex/${YC_REGISTRY_ID}/app:${RELEASE_VERSION}_fix${FIX_NUMBER}
+          docker push cr.yandex/${YC_REGISTRY_ID}/app:${RELEASE_VERSION}_latest
+      - name: Create fix tag
+        run: |
+          git tag v${RELEASE_VERSION}_fix${FIX_NUMBER}
+          git push origin v${RELEASE_VERSION}_fix${FIX_NUMBER}
+      - name: Comment to Issue
+        run: |
+          gh issue comment $(gh issue list --search "Release v${RELEASE_VERSION}" --json number --jq '.[0].number') --body "$(printf "Дата фикса: %s\nАвтор: %s\nDocker: cr.yandex/%s/app:%s_fix%s" "$(date)" "${{ github.actor }}" "${YC_REGISTRY_ID}" "${RELEASE_VERSION}" "${FIX_NUMBER}")"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+      RELEASE_VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - name: Create release branch
+        run: |
+          git checkout -b releases/${RELEASE_VERSION}
+          git push origin releases/${RELEASE_VERSION}
+      - name: Build Docker image
+        run: |
+          docker build -t cr.yandex/${YC_REGISTRY_ID}/app:${RELEASE_VERSION} .
+          docker tag cr.yandex/${YC_REGISTRY_ID}/app:${RELEASE_VERSION} cr.yandex/${YC_REGISTRY_ID}/app:${RELEASE_VERSION}_latest
+      - name: Login to Yandex Container Registry
+        run: |
+          echo '${{ secrets.YC_SA_KEY }}' > key.json
+          cat key.json | docker login --username json_key --password-stdin cr.yandex
+      - name: Push Docker images
+        run: |
+          docker push cr.yandex/${YC_REGISTRY_ID}/app:${RELEASE_VERSION}
+          docker push cr.yandex/${YC_REGISTRY_ID}/app:${RELEASE_VERSION}_latest
+      - name: Create release tag
+        run: |
+          git tag v${RELEASE_VERSION}
+          git push origin v${RELEASE_VERSION}
+      - name: Create GitHub Issue
+        run: |
+          gh issue create --title "Release v${RELEASE_VERSION}" --body "$(printf "Дата: %s\nАвтор: %s\nВерсия: %s\nDocker: cr.yandex/%s/app:%s" "$(date)" "${{ github.actor }}" "${RELEASE_VERSION}" "${YC_REGISTRY_ID}" "${RELEASE_VERSION}")"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
