@@ -15,10 +15,14 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v3
 
-            - name: Login to Yandex Container Registry
-              uses: yc-actions/yc-cr-login@v1
-              with:
-                  yc-sa-json-credentials: ${{ secrets.YC_SERVICE_KEY }}
+            - name: Login to Yandex Container Registry (locally in CI)
+              id: yc_login
+              run: |
+                  echo "${{ secrets.YC_SERVICE_KEY }}" > sa-key.json
+                  YC_TOKEN=$(yc iam create-token --service-account-key sa-key.json)
+                  echo "token=$YC_TOKEN" >> $GITHUB_OUTPUT
+              env:
+                  YC_SERVICE_KEY: ${{ secrets.YC_SERVICE_KEY }}
 
             - name: Build Docker image
               run: |
