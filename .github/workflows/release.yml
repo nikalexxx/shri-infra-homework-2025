@@ -41,7 +41,7 @@ jobs:
           git push origin releases/${VERSION}
 
       - name: Docker login to Yandex Container Registry
-        run: docker login -u "${{ secrets.YCR_ACCESS_KEY_ID }}" -p "${{ secrets.YCR_SECRET_ACCESS_KEY }}" cr.yandex
+        run: echo "${{ secrets.YC_IAM_TOKEN }}" | docker login --username iam --password-stdin cr.yandex
 
       - name: Build and push Docker images
         run: |
