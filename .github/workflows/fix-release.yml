@@ -69,3 +69,4 @@ jobs:
             --body "$(printf "### Fix v%s\n\n**Date:** %s\n**Author:** %s\n\n**Changes:**\n%s\n\n**Docker Image:**\n%s:%s" "$HOTFIX_TAG" "$(date '+%Y-%m-%d %H:%M')" "${{ github.actor }}" "${{ steps.hotfix-notes.outputs.notes }}" "$DOCKER_REGISTRY" "$HOTFIX_TAG")"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
