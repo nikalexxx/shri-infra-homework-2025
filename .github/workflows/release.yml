@@ -1,0 +1,29 @@
+name: Release
+on: pull_request
+jobs:
+    lint:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Install deps
+              run: npm ci
+            - name: Build docker
+              run: npm run build:docker
+            - name: Start docker
+              run: npm run start:docker
+            - name: Lint
+              run: npm run lint
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Install deps
+              run: npm ci
+            - name: Build docker
+              run: npm run build:docker
+            - name: Start docker
+              run: npm run start:docker
+            - name: Test
+              run: npm run test
