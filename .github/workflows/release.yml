@@ -1,0 +1,67 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: cr.yandex/cr.yandex/crpkqslnrp0k970jh358
+  VERSION: ${{ github.run_number }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 22
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+
+      - name: Create release branch
+        run: |
+          git checkout -b releases/${{ env.VERSION }}
+          git push origin releases/${{ env.VERSION }}
+
+      - name: Build docker image
+        run: |
+          docker build -t $REGISTRY/app:${VERSION} .
+          docker tag $REGISTRY/app:${VERSION} $REGISTRY/app:${VERSION}_latest
+
+      - name: kirill
+        run: docker login --username oauth --password ${{ secrets.YA_OAUTH_TOKEN }} cr.yandex
+
+      - name: Push docker images
+        run: |
+          docker push $REGISTRY/app:${VERSION}
+          docker push $REGISTRY/app:${VERSION}_latest
+
+      - name: Tag release
+        run: |
+          git tag v${VERSION}
+          git push origin v${VERSION}
+
+      - name: Create GitHub Issue with release info
+        run: |
+          echo "## Release $VERSION" > release.md
+          echo "Дата: $(date)" >> release.md
+          echo "Автор: ${{ github.actor }}" >> release.md
+          echo "Версия: $VERSION" >> release.md
+          echo "Docker: $REGISTRY/app:${VERSION}" >> release.md
+          gh issue create --title "Release $VERSION" --body-file release.md --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update CHANGELOG.md
+        run: |
+          echo -e "## v${VERSION} — $(date)\n$(git log $(git describe --tags --abbrev=0)..HEAD --oneline)\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add CHANGELOG.md
+          git commit -m "chore: update changelog for v${VERSION}"
+          git push
