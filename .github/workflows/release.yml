@@ -60,7 +60,6 @@ jobs:
           git checkout -b ${{ steps.vars.outputs.branch }}
           git push origin ${{ steps.vars.outputs.branch }}
 
-
   create-docker-image:
     name: Create Docker image
     runs-on: ubuntu-latest
@@ -96,7 +95,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: "releases/$VERSION"
+          ref: ${{ needs.create-release.outputs.vars.branch }}
 
       - name: Create Git tag
         run: |
@@ -115,14 +114,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: "releases/$VERSION"
+          ref: ${{ needs.create-release.outputs.vars.branch }}
 
       - name: Create GitHub Issue with release info
         run: |
           set -eux
-          git checkout main
-          git pull origin main
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | head -n1)
+          git fetch --tags
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+$" | head -n1)
           echo "Previous tag: $PREV_TAG"
           
           if [ -n "$PREV_TAG" ]; then
@@ -134,7 +132,7 @@ jobs:
           echo -e "$BODY" > body.md
           gh issue create --title "Релиз v${{ github.run_number }}" --body-file body.md
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   generate-changelog:
     name: Generate Changelog
@@ -146,15 +144,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: "releases/$VERSION"
+          ref: ${{ needs.create-release.outputs.vars.branch }}
 
       - name: Generate changelog
         run: |
           set -eux
-          git checkout main
-          git pull origin main
-
-          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          git fetch --tags
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+$" | head -n1)
           echo "Previous tag: $PREV_TAG"
 
           echo -e "## v${{ github.run_number }} - $(date +'%Y-%m-%d')\n" > temp_changelog.md
@@ -197,4 +193,4 @@ jobs:
               base
             });
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
