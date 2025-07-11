@@ -22,18 +22,15 @@ jobs:
       RELEASE_VERSION: ${{ inputs.release_version }}
 
     steps:
-      - name: Check if image exists in Yandex Container Registry
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Yandex Cloud Container Registry
         run: |
-          TOKEN=$(curl -s -H "Authorization: Api-Key ${{ secrets.YC_API_KEY }}" \
-            "https://iam.api.cloud.yandex.net/iam/v1/tokens" \
-            -H "Content-Type: application/json" \
-            -d '{}') && \
-          IAM_TOKEN=$(echo $TOKEN | jq -r .iamToken)
-
-          IMAGE_CHECK=$(curl -s -H "Authorization: Bearer $IAM_TOKEN" \
-            "https://container-registry.api.cloud.yandex.net/container-registry/v1/repositories/${{ secrets.YC_REGISTRY_ID }}/app/tags")
-
-          echo "$IMAGE_CHECK" | grep "${RELEASE_VERSION}_latest" || (echo "Image not found" && exit 1)
+          echo "${{ secrets.YANDEX_PASSWORD }}" | docker login \
+            --username oauth \
+            --password-stdin \
+            cr.yandex
 
       - name: Deploy on production server over SSH
         uses: appleboy/ssh-action@v1.0.0
