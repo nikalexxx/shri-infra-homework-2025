@@ -27,3 +27,4 @@ jobs:
               run: npm run start:docker
             - name: Test
               run: npm run test
+              
