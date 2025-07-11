@@ -40,4 +40,5 @@ jobs:
             gunzip -c /tmp/app.tar.gz | docker load
             docker stop app || true
             docker rm app || true
-            docker run -d --name app -p 80:3000 app
+            docker run -d --name app -p 80:3000 app:latest
+            rm -f /tmp/app.tar.gz
