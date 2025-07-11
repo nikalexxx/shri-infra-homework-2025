@@ -1,0 +1,97 @@
+name: Release Fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      RELEASE_VERSION:
+        description: "Release version"
+        required: true
+
+env:
+  APP_NAME: app
+  REGISTRY_HOST: cr.yandex
+  REESTR_ID: ${{ secrets.REESTR_ID }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run ${{ matrix.task }}
+
+  release-fix:
+    needs: check
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.RELEASE_VERSION }}
+      FIX: ${{ github.run_number }}
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: releases/${{ github.event.inputs.RELEASE_VERSION }}
+          fetch-depth: 0
+
+      - name: Login to Yandex Cloud
+        run: |
+          echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin ${{ env.REGISTRY_HOST }}
+
+      - name: Build Docker images
+        run: |
+          docker build -t $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_fix${FIX} .
+          docker tag $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_fix${FIX} $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_latest
+
+      - name: Push Docker images
+        run: |
+          docker push $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_fix${FIX}
+          docker push $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_latest
+
+      - name: Create and push fix tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag ${VERSION}_fix${FIX}
+          git push origin ${VERSION}_fix${FIX}
+
+      - name: Get previous tag and commits
+        id: changelog
+        run: |
+          git fetch --tags
+          TAG=$(git tag --sort=-creatordate | grep -E "^${VERSION}(_fix[0-9]+)?$" | sed -n 2p)
+          echo "PREV_TAG=$TAG" >> $GITHUB_OUTPUT
+          if [ -z "$TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" releases/$VERSION)
+          else
+            COMMITS=$(git log $TAG..releases/$VERSION --pretty=format:"- %s (%h)")
+          fi
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Find release issue number
+        id: issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUMBER=$(gh issue list --state open --search "Release $VERSION" --json number --jq '.[0].number')
+          echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+
+      - name: Add comment to release issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ steps.issue.outputs.ISSUE_NUMBER }} \
+            --body "Дата фикса: $(date '+%Y-%m-%d %H:%M:%S')
+          Автор фикса: ${{ github.actor }}
+          Список коммитов:
+          ${{ steps.changelog.outputs.commits }}
+
+          Docker-образ: $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_fix${FIX}
+          "
