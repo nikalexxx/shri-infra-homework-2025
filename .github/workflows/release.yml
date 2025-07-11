@@ -147,7 +147,8 @@ jobs:
           EOF
           )
           
-          echo "$BODY" | gh issue create --title "Релиз v${{ github.run_number }}" --body-file -
+          echo "$BODY" > body.md
+          gh issue create --title "Релиз v${{ github.run_number }}" --body-file body.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
