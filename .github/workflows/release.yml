@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
 
       - run: npm ci
       - run: npm run lint
@@ -42,12 +42,15 @@ jobs:
       - name: Login to Yandex Container Registry
         run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin ${{ env.REGISTRY_HOST }}
 
-      - name: Build and Push Docker image
+      - name: Build Docker images
         run: |
-          docker buildx build \
-            --tag $REGISTRY_HOST/$REESTR_ID/$APP_NAME:$VERSION \
-            --tag $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_latest \
-            --push .
+          docker build -t $REGISTRY_HOST/$REESTR_ID/$APP_NAME:$VERSION .
+          docker tag $REGISTRY_HOST/$REESTR_ID/$APP_NAME:$VERSION $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_latest
+
+      - name: Push Docker images
+        run: |
+          docker push $REGISTRY_HOST/$REESTR_ID/$APP_NAME:$VERSION
+          docker push $REGISTRY_HOST/$REESTR_ID/$APP_NAME:${VERSION}_latest
 
       - name: Push images
         run: |
