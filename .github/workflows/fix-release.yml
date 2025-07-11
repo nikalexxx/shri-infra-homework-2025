@@ -38,8 +38,6 @@ jobs:
         run: |
           git fetch --tags
 
-          echo "Base version from input: $BASE_TAG"
-
           FIX_TAGS=$(git tag | grep "^${BASE_TAG}-fix\." || true)
 
           if [[ -z "$FIX_TAGS" ]]; then
@@ -48,7 +46,7 @@ jobs:
             FIX_NUMBER=$(echo "$FIX_TAGS" | sed -E "s/^${BASE_TAG}-fix\.//" | sort -n | tail -n1)
             FIX_NUMBER=$((FIX_NUMBER + 1))
           fi
-          echo "fix_number=$FIX_TAG" >> $GITHUB_OUTPUT
+          echo "fix_number=$FIX_NUMBER" >> $GITHUB_OUTPUT
 
   # 3. Сборка и пуш фикса
   build-and-push-fix:
@@ -58,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.event.inputs.version }}
-      FIX_NO: ${{ needs.compute_fix_tag.outputs.fix_tag }}
+      FIX_NO: ${{ needs.compute_fix_number.outputs.fix_number}}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -110,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.event.inputs.version }}
-      FIX_NO: ${{ needs.compute_fix_tag.outputs.fix_tag }}
+      FIX_NO: ${{ needs.compute_fix_number.outputs.fix_number}}
       REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
       ISSUE_NUMBER: ${{ needs.find-issue.outputs.issue_number }}
     steps:
