@@ -66,6 +66,8 @@ jobs:
         with:
           script: |
             try {
+              const releaseVersion = "${{ github.event.inputs.release_version }}";
+
               // Получаем список тегов
               const { data: tags } = await github.rest.repos.listTags({
                 owner: context.repo.owner,
