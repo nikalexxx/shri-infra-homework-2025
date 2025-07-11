@@ -113,7 +113,7 @@ jobs:
               // Создаем Issue
               const issueBody = `**Version:** ${process.env.VERSION}\n\n` +
                                `**Author:** ${context.actor}\n\n` +
-                               `**Commits since last release:**\n${filteredCommits.map(m => '- ' + m).join('\n')}\n\n` +
+                               `**Commits since last release:**\n${commitMessages.map(m => '- ' + m).join('\n')}\n\n` +
                                `**Image:** ${process.env.REGISTRY}/app:${process.env.VERSION}\n\n` +
                                `**Date:** ${new Date().toISOString()}`;
 
@@ -133,7 +133,7 @@ jobs:
               }
 
               const newEntry = `# v${process.env.VERSION}\n\n` +
-                              `${filteredCommits.map(m => '- ' + m).join('\n')}\n\n`;
+                              `${commitMessages.map(m => '- ' + m).join('\n')}\n\n`;
               fs.writeFileSync('CHANGELOG.md', newEntry + changelog);
 
               // Коммитим изменения
