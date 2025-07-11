@@ -16,10 +16,10 @@ jobs:
               uses: actions/checkout@v3
 
             - name: Build Docker image
-              run: docker build -t app:latest .
+              run: docker build -t app .
 
             - name: Save Docker image to tar.gz
-              run: docker save app:latest | gzip > app.tar.gz
+              run: docker save app | gzip > app.tar.gz
 
             - name: Copy Docker image archive to server
               uses: appleboy/scp-action@v0.1.5
@@ -28,7 +28,7 @@ jobs:
                   username: ${{ secrets.VM_SSH_USER }}
                   key: ${{ secrets.VM_SSH_KEY }}
                   source: "app.tar.gz"
-                  target: "/tmp/app.tar.gz"
+                  target: "/tmp/" # ❗ это важно — чтобы не превратилось в директорию
 
             - name: Deploy and run Docker container on server
               uses: appleboy/ssh-action@v0.1.7
