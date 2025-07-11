@@ -1,46 +1,48 @@
 name: CI/CD Deploy to Prod
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Версия образа"
-        required: true
+    workflow_dispatch:
+        inputs:
+            version:
+                description: "Версия образа"
+                required: true
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
+    build-and-deploy:
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v3
 
-      - name: Build Docker image
-        run: docker build -t app .
+            - name: Build Docker image
+              run: docker build -t app .
 
-      - name: Save Docker image to tar.gz
-        run: docker save app | gzip > app.tar.gz
+            - name: Save Docker image to tar.gz
+              run: docker save app | gzip > app.tar.gz
 
-      - name: Copy Docker image archive to server
-        uses: appleboy/scp-action@v0.1.5
-        with:
-          host: ${{ secrets.VM_IP }}
-          username: ${{ secrets.VM_SSH_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          source: "app.tar.gz"
-          target: "/tmp/app.tar.gz"
-          rm: false
-          strip_components: 0
+            - name: Copy Docker image archive to server
+              uses: appleboy/scp-action@v0.1.5
+              with:
+                  host: ${{ secrets.VM_IP }}
+                  username: ${{ secrets.VM_SSH_USER }}
+                  key: ${{ secrets.VM_SSH_KEY }}
+                  source: "app.tar.gz"
+                  target: "/tmp/app.tar.gz"
+                  rm: false
+                  strip_components: 0
 
-      - name: Deploy and run Docker container on server
-        uses: appleboy/ssh-action@v0.1.7
-        with:
-          host: ${{ secrets.VM_IP }}
-          username: ${{ secrets.VM_SSH_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script: |
-            gunzip -c /tmp/app.tar.gz | docker load           
-            docker stop app || true
-            docker rm app || true
-            docker run -d --name app -p 80:3000 app:latest
-            rm -f /tmp/app.tar.gz
+            - name: Deploy and run Docker container on server
+              uses: appleboy/ssh-action@v0.1.7
+              with:
+                  host: ${{ secrets.VM_IP }}
+                  username: ${{ secrets.VM_SSH_USER }}
+                  key: ${{ secrets.VM_SSH_KEY }}
+                  script: |
+                      docker stop app || true
+                      docker rm app || true
+                      docker rmi app:latest || true
+                      rm -f /tmp/app.tar.gz
+                      gunzip -c /tmp/app.tar.gz | docker load
+                      docker run -d --name app -p 80:3000 app:latest
+                      rm -f /tmp/app.tar.gz
