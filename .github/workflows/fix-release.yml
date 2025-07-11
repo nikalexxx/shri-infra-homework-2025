@@ -40,11 +40,16 @@ jobs:
           
       - name: Build and push Docker image
         run: |
-          docker build -t $DOCKER_REGISTRY:$HOTFIX_TAG .
-          docker tag $DOCKER_REGISTRY:$HOTFIX_TAG $DOCKER_REGISTRY:${BASE_VERSION}_latest
+          FULL_TAG="$DOCKER_REGISTRY:${BASE_VERSION}_fix${GITHUB_RUN_NUMBER}"
+          
+          echo "Building Docker image with tag: $FULL_TAG"
+          
+          docker build -t "$FULL_TAG" .
+          docker tag "$FULL_TAG" "$DOCKER_REGISTRY:${BASE_VERSION}_latest"
+          
           echo '${{ secrets.YC_SA_KEY }}' | docker login --username json_key --password-stdin cr.yandex
-          docker push $DOCKER_REGISTRY:$HOTFIX_TAG
-          docker push $DOCKER_REGISTRY:${BASE_VERSION}_latest
+          docker push "$FULL_TAG"
+          docker push "$DOCKER_REGISTRY:${BASE_VERSION}_latest"
           
       - name: Tag fix
         run: |
