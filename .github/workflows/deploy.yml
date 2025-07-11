@@ -1,0 +1,24 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to deploy"
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            docker pull cr.yandex/cr.yandex/crp5onllu1dr93ho6783/app:${{ github.event.inputs.version }}_latest
+            docker stop shri || true && docker rm shri || true
+            docker run -d -p 80:3000 --name shri cr.yandex/cr.yandex/crp5onllu1dr93ho6783/app:${{ github.event.inputs.version }}_latest

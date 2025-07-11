@@ -1,0 +1,124 @@
+name: Release Flow
+
+on:
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: cr.yandex/crp5onllu1dr93ho6783/app
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        job: [lint, test]
+    name: Run ${{ matrix.job }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Run ${{ matrix.job }}
+        run: npm run ${{ matrix.job }}
+
+  release:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    env:
+      VERSION: ${{ github.run_number }}
+      IMAGE_NAME: ${{ env.IMAGE_NAME }}
+    steps:
+      - uses: actions/checkout@v3
+
+      # Настроим git user для коммитов
+      - name: Setup Git user
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      # Создаем и пушим релизную ветку
+      - name: Create and push release branch
+        run: |
+          git checkout -b releases/${VERSION}
+          git push origin releases/${VERSION}
+
+      # Логин в Yandex Container Registry
+      - name: Docker login to Yandex Container Registry
+        run: echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+
+      # Собираем и пушим Docker образы с двумя тегами
+      - name: Build and push Docker images
+        run: |
+          docker build -t ${IMAGE_NAME}:${VERSION} .
+          docker tag ${IMAGE_NAME}:${VERSION} ${IMAGE_NAME}:${VERSION}_latest
+          docker push ${IMAGE_NAME}:${VERSION}
+          docker push ${IMAGE_NAME}:${VERSION}_latest
+
+      # Создаем git тег с версией и пушим
+      - name: Create and push git tag
+        run: |
+          git tag ${VERSION}
+          git push origin ${VERSION}
+
+      # Получаем предыдущий тег с числовым именем (предыдущий релиз)
+      - name: Get previous release tag
+        id: prev_tag
+        run: |
+          git fetch --tags
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | sed -n 2p || echo "")
+          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      # Формируем список коммитов от предыдущего релиза
+      - name: Generate commit list for changelog
+        id: changelog
+        run: |
+          if [ -z "${{ steps.prev_tag.outputs.PREV_TAG }}" ]; then
+            COMMITS=$(git log --oneline)
+          else
+            COMMITS=$(git log ${{ steps.prev_tag.outputs.PREV_TAG }}..HEAD --oneline)
+          fi
+          echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # Обновляем CHANGELOG.md в релизной ветке и в main
+      - name: Update CHANGELOG.md
+        run: |
+          echo "## Версия ${VERSION} - $(date +'%Y-%m-%d')" > TEMP_CHANGELOG
+          echo "${{ steps.changelog.outputs.COMMITS }}" >> TEMP_CHANGELOG
+          echo "" >> TEMP_CHANGELOG
+          cat CHANGELOG.md >> TEMP_CHANGELOG
+          mv TEMP_CHANGELOG CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "Update changelog for release ${VERSION}"
+          git push origin releases/${VERSION}
+
+          # Сохраняем изменённый CHANGELOG для main
+          cp CHANGELOG.md CHANGELOG_RELEASE.md
+
+          # Переключаемся на main и обновляем CHANGELOG там
+          git checkout main
+          git pull origin main
+          mv CHANGELOG_RELEASE.md CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "Update changelog for release ${VERSION}"
+          git push origin main
+
+      # Генерируем шаблон Issue с информацией о релизе
+      - name: Generate release issue content
+        run: |
+          echo "**Версия**: ${VERSION}" > .github/release-template.md
+          echo "**Дата**: $(date +'%Y-%m-%d')" >> .github/release-template.md
+          echo "**Автор релиза**: ${{ github.actor }}" >> .github/release-template.md
+          echo "**Коммиты с предыдущего релиза:**" >> .github/release-template.md
+          echo "${{ steps.changelog.outputs.COMMITS }}" >> .github/release-template.md
+          echo "**Docker-образ в Yandex Container Registry**: ${IMAGE_NAME}:${VERSION}" >> .github/release-template.md
+
+      # Создаем Issue в GitHub
+      - name: Create GitHub Issue
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "Релиз версии ${VERSION}"
+          content-filepath: .github/release-template.md
+          labels: release
