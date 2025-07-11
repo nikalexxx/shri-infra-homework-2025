@@ -15,6 +15,8 @@ env:
   REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
   IMAGE_NAME: app
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  VERSION: ${{ github.event.inputs.release_version }}
+  FIX: ${{ needs.setup.outputs.fix_number }}
 
 jobs:
   setup:
@@ -119,6 +121,18 @@ jobs:
             PREV="v${VERSION}"
           fi
           echo "prev_tag=$PREV" >> "$GITHUB_OUTPUT"
+
+      - name: Create and Push Git Tag
+        run: |
+          git fetch --tags
+          
+          TAG="v${VERSION}_fix${FIX}"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          
+          echo "Creating and pushing tag: $TAG"
+          git tag "$TAG"
+          git push origin "$TAG
 
       - name: Сформировать тело комментария
         id: comment_body
