@@ -23,20 +23,27 @@ jobs:
       fix_number: ${{ steps.fix.outputs.fix_number }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch all tags
+        run: git fetch --tags
 
       - name: Определение номера фикса
         id: fix
         run: |
           VERSION="${{ github.event.inputs.release_version }}"
+          
+          # Получаем все теги вида v1.2.3_fixX и определяем последний X
           LAST_TAG=$(git tag --list "v${VERSION}_fix*" --sort=-v:refname | head -n1)
-
+          
           if [[ -z "$LAST_TAG" ]]; then
             FIX_NUMBER=1
           else
             LAST_NUM=$(echo "$LAST_TAG" | grep -oP 'fix\K[0-9]+')
             FIX_NUMBER=$((LAST_NUM + 1))
           fi
-
+          
           echo "fix_number=$FIX_NUMBER" >> $GITHUB_OUTPUT
 
   lint:
@@ -87,18 +94,22 @@ jobs:
           docker push "$IMAGE:${VERSION}_fix${FIX}"
           docker push "$IMAGE:${VERSION}_latest"
 
-      - name: Create Git Tag
+      - name: Определение номера фикса
+        id: fix
         run: |
-          TAG="v${VERSION}_fix${FIX}"
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists. Skipping tag creation."
+          VERSION="${{ github.event.inputs.release_version }}"
+    
+          # Получаем все теги вида v1.2.3_fixX и определяем последний X
+          LAST_TAG=$(git tag --list "v${VERSION}_fix*" --sort=-v:refname | head -n1)
+    
+          if [[ -z "$LAST_TAG" ]]; then
+            FIX_NUMBER=1
           else
-            git tag "$TAG"
-            git push origin "$TAG"
+            LAST_NUM=$(echo "$LAST_TAG" | grep -oP 'fix\K[0-9]+')
+            FIX_NUMBER=$((LAST_NUM + 1))
           fi
+    
+          echo "fix_number=$FIX_NUMBER" >> $GITHUB_OUTPUT
 
       - name: Get Previous Tag
         id: prev_tag
