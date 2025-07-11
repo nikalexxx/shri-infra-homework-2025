@@ -4,107 +4,162 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: cr.yandex/${{ secrets.REESTR_ID }}/app
+  APP_NAME: app
+  REGISTRY_HOST: cr.yandex
+  REESTR_ID: ${{ secrets.REESTR_ID }}
 
 jobs:
+  # 1. Проверки (lint + test)
   lint-and-test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        job: [lint, test]
-    name: Run ${{ matrix.job }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
           node-version: 22
-      - run: npm ci
-      - run: npm run ${{ matrix.job }}
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint code
+        run: npm run lint
+      - name: Run tests
+        run: npm run test
 
-  release:
+  # 2. Сборка и пуш Docker образа
+  build-and-push:
+    needs: lint-test
     runs-on: ubuntu-latest
-    needs: lint-and-test
     env:
       VERSION: ${{ github.run_number }}
-      IMAGE_NAME: cr.yandex/${{ secrets.REESTR_ID }}/app
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Setup Git user
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Yandex Container Registry
+        run: echo "${{ secrets.YC_IAM_TOKEN }}" | docker login --username oauth --password-stdin ${{ env.REGISTRY_HOST }}
+
+      - name: Build and tag Docker image
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+          docker build \
+            -t ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }} \
+            -t ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }}_latest \
+            .
 
-      - name: Create and push release branch
+      - name: Push Docker images
         run: |
-          git checkout -b releases/${VERSION}
-          git push origin releases/${VERSION}
+          docker push ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }}
+          docker push ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }}_latest
 
-      - name: Docker login to Yandex Container Registry
-        run: echo "${{ secrets.YC_IAM_TOKEN }}" | docker login --username iam --password-stdin cr.yandex
-
-      - name: Build and push Docker images
+  # 3. Создание релизной ветки
+  release-branch:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release branch
         run: |
-          docker build -t ${{ env.IMAGE_NAME }}:${{ env.VERSION }} .
-          docker tag ${{ env.IMAGE_NAME }}:${{ env.VERSION }} ${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest
-          docker push ${{ env.IMAGE_NAME }}:${{ env.VERSION }}
-          docker push ${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b releases/${{ env.VERSION }}
+          git push origin releases/${{ env.VERSION }}
 
-      - name: Create and push git tag
+  # 4. Создание тега и обновление CHANGELOG.md
+  tag-and-changelog:
+    needs: release-branch
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: releases/${{ env.VERSION }}
+          fetch-depth: 0
+      - name: Fetch all tags
+        run: git fetch --tags
+      - name: Create git tag
         run: |
-          git tag ${VERSION}
-          git push origin ${VERSION}
-
-      - name: Get previous release tag
-        id: prev_tag
-        run: |
-          git fetch --tags
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | sed -n 2p || echo "")
-          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_OUTPUT
-
-      - name: Generate commit list for changelog
+          git tag ${{ env.VERSION }}
+          git push origin ${{ env.VERSION }}
+      - name: Generate changelog entry
         id: changelog
         run: |
-          if [ -z "${{ steps.prev_tag.outputs.PREV_TAG }}" ]; then
-            COMMITS=$(git log --oneline)
+          PREV_TAG=$(git describe --tags --abbrev=0 ${{ env.VERSION }}^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
           else
-            COMMITS=$(git log ${{ steps.prev_tag.outputs.PREV_TAG }}..HEAD --oneline)
+            RANGE="HEAD"
           fi
-          echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Update CHANGELOG.md
+          COMMITS=$(git log $RANGE --pretty=format:'- %s (%an)')
+          DATE=$(date -u +"%Y-%m-%d")
+          echo -e "## ${{ env.VERSION }} ($DATE)\n\n$COMMITS\n" > new_changelog.md
+      - name: Prepend new changelog to CHANGELOG.md
         run: |
-          echo "## Версия ${VERSION} - $(date +'%Y-%m-%d')" > TEMP_CHANGELOG
-          echo "${{ steps.changelog.outputs.COMMITS }}" >> TEMP_CHANGELOG
-          echo "" >> TEMP_CHANGELOG
-          cat CHANGELOG.md >> TEMP_CHANGELOG
-          mv TEMP_CHANGELOG CHANGELOG.md
-          git add CHANGELOG.md
-          git commit -m "Update changelog for release ${VERSION}"
-          git push origin releases/${VERSION}
-
-          cp CHANGELOG.md CHANGELOG_RELEASE.md
-          git checkout main
-          git pull origin main
-          mv CHANGELOG_RELEASE.md CHANGELOG.md
-          git add CHANGELOG.md
-          git commit -m "Update changelog for release ${VERSION}"
-          git push origin main
-
-      - name: Generate release issue content
+          cat new_changelog.md CHANGELOG.md > CHANGELOG.tmp
+          mv CHANGELOG.tmp CHANGELOG.md
+      - name: Commit updated CHANGELOG.md
         run: |
-          echo "**Версия**: ${VERSION}" > .github/release-template.md
-          echo "**Дата**: $(date +'%Y-%m-%d')" >> .github/release-template.md
-          echo "**Автор релиза**: ${{ github.actor }}" >> .github/release-template.md
-          echo "**Коммиты с предыдущего релиза:**" >> .github/release-template.md
-          echo "${{ steps.changelog.outputs.COMMITS }}" >> .github/release-template.md
-          echo "**Docker-образ**: ${IMAGE_NAME}:${VERSION}" >> .github/release-template.md
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore: update CHANGELOG for release ${{ env.VERSION }}"
+          git push origin releases/${{ env.VERSION }}
+
+  # 5. GitHub Issue с информацией о релизе
+  create-issue:
+    needs: tag-and-changelog
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+      APP_NAME: ${{ env.APP_NAME }}
+      REGISTRY_HOST: ${{ env.REGISTRY_HOST }}
+      REESTR_ID: ${{ env.REESTR_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare issue content
+        run: |
+          REG="${REGISTRY_HOST}/${REESTR_ID}"
+          DATE=$(date -u +"%Y-%m-%d")
+          PREV_TAG=$(git describe --tags --abbrev=0 $VERSION^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            LOG=$(git log $PREV_TAG..HEAD --pretty=format:'- %s (%an)')
+          else
+            LOG=$(git log --pretty=format:'- %s (%an)')
+          fi
+
+          cat <<EOF > .github/release-issue.md
+          **Release**: $VERSION
+          **Date**: $DATE UTC
+          **Author**: @${{ github.actor }}
+
+          **Commits:**
+          $LOG
+
+          **Docker images:**
+          - \`$REG/$APP_NAME:$VERSION\`
+          - \`$REG/$APP_NAME:${VERSION}_latest\`
+          EOF
 
       - name: Create GitHub Issue
-        uses: peter-evans/create-issue-from-file@v5
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ env.VERSION }}
         with:
-          title: "Релиз версии ${VERSION}"
-          content-filepath: .github/release-template.md
-          labels: release
+          script: |
+            const fs = require('fs');
+            const content = fs.readFileSync('.github/release-issue.md', 'utf8');
+
+            const result = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release v${process.env.VERSION}`,
+              body: content
+            });
+
+            core.setOutput("issue_number", result.data.number);
