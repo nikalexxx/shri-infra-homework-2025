@@ -120,11 +120,11 @@ jobs:
         run: |
           set -eux
           git fetch --tags --force
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+$" | head -n1)
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+$" | head -n2 | tail -n1)
           echo "Previous tag: $PREV_TAG"
           
           if [ -n "$PREV_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG"..HEAD)
+            COMMITS=$(git log "$PREV_TAG"..v${{ github.run_number }} --pretty=format:"- %s")
           else
             COMMITS=$(git log --pretty=format:"- %s")
           fi
@@ -169,15 +169,15 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git fetch --tags
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+$" | head -n1)
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+$" | head -n2 | tail -n1)
           echo "Previous tag: $PREV_TAG"
 
           echo -e "## v${{ github.run_number }} - $(date +'%Y-%m-%d')\n" > temp_changelog.md
 
           if [ -n "$PREV_TAG" ]; then
-            git log "$PREV_TAG"..HEAD --pretty=format:"- %s" >> temp_changelog.md
+            git log "$PREV_TAG"..v${{ github.run_number }} --pretty=format:"- %s" >> temp_changelog.md
           else
-            git log --pretty=format:"- %s" >> temp_changelog.md
+            git log v${{ github.run_number }} --pretty=format:"- %s" >> temp_changelog.md
           fi
 
           echo -e "\n\n" >> temp_changelog.md
