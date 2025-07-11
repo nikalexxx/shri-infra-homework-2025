@@ -135,7 +135,7 @@ jobs:
           
           echo "Creating and pushing tag: $TAG"
           git tag "$TAG"
-          git push origin "$TAG
+          git push origin "$TAG"
 
       - name: Сформировать тело комментария
         id: comment_body
