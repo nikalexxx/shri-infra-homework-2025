@@ -44,11 +44,11 @@ jobs:
       - name: Build and Push Docker image
         uses: docker/build-push-action@v5
         with:
-        context: .
-        push: true
-        tags: |
-          ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}
-          ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}_latest
+          context: .
+          push: true
+          tags: |
+            ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}
+            ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}_latest
 
       - name: Push images
         run: |
