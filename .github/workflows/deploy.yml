@@ -42,7 +42,7 @@ jobs:
                       docker stop app || true
                       docker rm app || true
                       docker rmi app:latest || true
-                      rm -f /tmp/app.tar.gz
+                      rm -rf /tmp/app.tar.gz
                       gunzip -c /tmp/app.tar.gz | docker load
                       docker run -d --name app -p 80:3000 app:latest
-                      rm -f /tmp/app.tar.gz
+                      rm -rf /tmp/app.tar.gz
