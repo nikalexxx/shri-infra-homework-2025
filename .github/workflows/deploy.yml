@@ -4,15 +4,27 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Release version"
+        description: "Version to deploy"
         required: true
+
+env:
+  DOCKER_REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+  APP_PORT: 3000
 
 jobs:
   deploy:
+    name: Deploy to Production
     runs-on: ubuntu-latest
-    env:
-      YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+    
     steps:
+      - name: Verify image exists
+        run: |
+          echo '${{ secrets.YC_SA_KEY }}' | docker login --username json_key --password-stdin cr.yandex
+          docker pull $DOCKER_REGISTRY:${{ inputs.release_version }}_latest || {
+            echo "::error::Image not found"
+            exit 1
+          }
+          
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -20,15 +32,18 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            echo '${{ secrets.YC_SA_KEY }}' > key.json
-            cat key.json | docker login --username json_key --password-stdin cr.yandex
-            docker pull cr.yandex/${YC_REGISTRY_ID}/app:${{ github.event.inputs.release_version }}_latest
+            echo '${{ secrets.YC_SA_KEY }}' | docker login --username json_key --password-stdin cr.yandex
             docker stop shri-infra || true
             docker rm shri-infra || true
-            docker run -d --name shri-infra -p 3000:3000 cr.yandex/${YC_REGISTRY_ID}/app:${{ github.event.inputs.release_version }}_latest
-      - name: Comment to Issue
+            docker run -d \
+              --name shri-infra \
+              -p $APP_PORT:$APP_PORT \
+              $DOCKER_REGISTRY:${{ inputs.release_version }}_latest
+              
+      - name: Update deployment status
+        if: github.event.repository.has_issues
         run: |
-          gh issue comment $(gh issue list --search "Release v${{ github.event.inputs.release_version }}" --json number --jq '.[0].number') \
-            --body $'Релиз выкачен в прод: '"$(date)"$'\nАвтор: '"${{ github.actor }}"
+          gh issue comment $(gh issue list --search "Release v${{ inputs.release_version }}" --json number --jq '.[0].number') \
+            --body "$(printf "### Deployment Status\n\n**Environment:** Production\n**Status:** Success\n**Date:** %s\n**Author:** %s\n\n**Access URL:**\nhttp://%s:%s/hw/store" "$(date '+%Y-%m-%d %H:%M')" "${{ github.actor }}" "${{ secrets.VM_IP }}" "$APP_PORT")"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
