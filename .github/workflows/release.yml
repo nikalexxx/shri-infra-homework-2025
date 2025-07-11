@@ -37,7 +37,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to Yandex Container Registry
-        run: echo "${{ secrets.YC_IAM_TOKEN }}" | docker login --username oauth --password-stdin ${{ env.REGISTRY_HOST }}
+        run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin ${{ env.REGISTRY_HOST }}
 
       - name: Build & Tag image
         run: |
