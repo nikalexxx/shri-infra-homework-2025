@@ -39,7 +39,7 @@ jobs:
       - name: Build and push Docker image
         env:
           YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
-          REGISTRY: cr.yandex/${{ secrets.REGISTRY_ID }}
+          REGISTRY: ${{ secrets.REGISTRY_ID }}
           VERSION: ${{ github.run_number }}
         run: |
           # Прямая аутентификация через Docker
