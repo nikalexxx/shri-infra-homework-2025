@@ -42,8 +42,8 @@ jobs:
       - name: Build and Push Docker image
         run: |
           docker buildx build \
-            --tag ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION} \
-            --tag ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}_latest \
+            --tag ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${env.VERSION} \
+            --tag ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${env.VERSION}_latest \
             --push \
             .
 
