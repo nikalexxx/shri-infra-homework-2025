@@ -15,17 +15,15 @@ jobs:
     steps:
       - name: Check image exists
         env:
-          YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+          YC_OAUTH_TOKEN: ${{ secrets.YC_OAUTH_TOKEN }}
         run: |
-          echo "$YC_SA_KEY" | docker login \
-            --username json_key \
-            --password-stdin cr.yandex
+          docker login --username oauth --password $YC_OAUTH_TOKEN cr.yandex
           
-          IMAGE_TAG="${REGISTRY}/app:${{ github.event.inputs.release_version }}_latest"
-          if docker manifest inspect $IMAGE_TAG > /dev/null; then
-            echo "Image $IMAGE_TAG exists"
+          IMAGE_TAG="${{ github.event.inputs.release_version }}_latest"
+          if docker pull $REGISTRY/app:$IMAGE_TAG 2>/dev/null; then
+            echo "Image $REGISTRY/app:$IMAGE_TAG exists"
           else
-            echo "Error: Image $IMAGE_TAG not found in Container Registry!"
+            echo "Error: Image $REGISTRY/app:$IMAGE_TAG not found in Container Registry!"
             exit 1
           fi
 
@@ -42,40 +40,39 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
+            docker login --username oauth --password ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
+            
+            IMAGE_TAG="${{ github.event.inputs.release_version }}_latest"
+            docker pull ${{ env.REGISTRY }}/app:$IMAGE_TAG
+            
             docker stop app || true
             docker rm app || true
             
             docker run -d \
               --name app \
               -p 3000:3000 \
-              ${{ env.REGISTRY }}/app:${{ github.event.inputs.release_version }}_latest
+              ${{ env.REGISTRY }}/app:$IMAGE_TAG
             
             sleep 5
             docker ps --filter "name=app" --format "table {{.Names}}\t{{.Status}}"
+            echo "Приложение доступно по адресу: http://$(curl -s ifconfig.me):3000/hw/store"
 
-      - name: Find release issue
-        id: find-issue
+      - name: Add deployment comment to issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          type -p gh >/dev/null || sudo apt-get install -y gh
+          
+          gh auth login --with-token <<< "$GITHUB_TOKEN"
+          
           BASE_VERSION=$(echo "${{ github.event.inputs.release_version }}" | sed 's/_fix.*//')
           
-          type -p gh >/dev/null || sudo apt-get install -y gh
-          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
-          
-          ISSUE_ID=$(gh issue list --search "Release v${BASE_VERSION}" --json number -q '.[0].number')
+          ISSUE_ID=$(gh issue list --search "Release v${BASE_VERSION}" --json number -q '.[0].number' 2>/dev/null)
           
           if [ -z "$ISSUE_ID" ]; then
             echo "::warning::Release issue for v${BASE_VERSION} not found!"
-            echo "issue_number=0" >> $GITHUB_OUTPUT
-          else
-            echo "Found issue #$ISSUE_ID"
-            echo "issue_number=$ISSUE_ID" >> $GITHUB_OUTPUT
+            exit 0
           fi
-
-      - name: Add deployment comment
-        if: steps.find-issue.outputs.issue_number != '0'
-        run: |
-          type -p gh >/dev/null || sudo apt-get install -y gh
-          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
           
           COMMENT="🚀 **Deployed to production**\n\n"\
                   "**Version:** ${{ github.event.inputs.release_version }}_latest\n"\
@@ -84,4 +81,4 @@ jobs:
                   "**Environment:** Production\n"\
                   "**Access URL:** http://${{ secrets.VM_IP }}:3000/hw/store"
           
-          gh issue comment ${{ steps.find-issue.outputs.issue_number }} --body "$COMMENT"
+          gh issue comment $ISSUE_ID --body "$COMMENT"
