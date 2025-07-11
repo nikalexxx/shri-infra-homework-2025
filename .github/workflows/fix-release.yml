@@ -31,12 +31,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build & Push Docker (fix)
+      - name: Build & Push Docker
         uses: ./.github/actions/docker-build-push
         with:
-          registry-id: ${{ secrets.YC_REGISTRY_ID }}
+          registry-id: ${{ secrets.REESTR_ID }}
           app-name: app
           tags: "${{ env.VERSION }}_fix${{ env.FIX_NO }} ${{ env.VERSION }}_latest"
+          ycr-token: ${{ secrets.YCR_TOKEN }}
 
       - name: Create Git tag for fix
         run: |
