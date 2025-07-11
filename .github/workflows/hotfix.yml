@@ -1,0 +1,81 @@
+name: Hotfix
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to fix'
+        required: true
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    env:
+      REGISTRY: cr.yandex/${{ secrets.REGISTRY_ID }}
+      FIX_NUMBER: ${{ github.run_number }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: releases/${{ inputs.release_version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      # Запуск проверок
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+
+      # Сборка и загрузка Docker-образа
+      - name: Build and push Docker image
+        env:
+          YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+        run: |
+          echo "$YC_SA_KEY" > key.json
+          yc config set service-account-key key.json
+          yc container registry configure-docker
+          docker build -t $REGISTRY/app:${{ inputs.release_version }}_fix$FIX_NUMBER .
+          docker tag $REGISTRY/app:${{ inputs.release_version }}_fix$FIX_NUMBER $REGISTRY/app:${{ inputs.release_version }}_latest
+          docker push $REGISTRY/app:${{ inputs.release_version }}_fix$FIX_NUMBER
+          docker push $REGISTRY/app:${{ inputs.release_version }}_latest
+
+      # Создание тега
+      - name: Create fix tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag v${{ inputs.release_version }}_fix$FIX_NUMBER
+          git push origin v${{ inputs.release_version }}_fix$FIX_NUMBER
+
+      # Добавление комментария в Issue релиза
+      - name: Add comment to release issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Поиск Issue релиза
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all'
+            });
+            
+            const releaseIssue = issues.find(issue => 
+              issue.title.includes(`Release ${process.env.INPUTS_RELEASE_VERSION}`)
+            );
+            
+            if (releaseIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: releaseIssue.number,
+                body: `**Hotfix applied!**\n\n` +
+                      `**Version:** ${process.env.INPUTS_RELEASE_VERSION}_fix${process.env.FIX_NUMBER}\n\n` +
+                      `**Author:** ${context.actor}\n\n` +
+                      `**Image:** ${process.env.REGISTRY}/app:${process.env.INPUTS_RELEASE_VERSION}_fix${process.env.FIX_NUMBER}`
+              });
+            }

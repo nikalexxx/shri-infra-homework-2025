@@ -1,0 +1,62 @@
+name: Deploy
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to deploy'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # Проверка существования образа
+      - name: Check image exists
+        env:
+          YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+          REGISTRY: cr.yandex/${{ secrets.REGISTRY_ID }}
+        run: |
+          echo "$YC_SA_KEY" > key.json
+          yc config set service-account-key key.json
+          yc container registry configure-docker
+          docker pull $REGISTRY/app:${{ inputs.release_version }}_latest
+
+      # Деплой на сервер
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            docker stop app || true
+            docker rm app || true
+            docker run -d --name app -p 3000:3000 \
+              $REGISTRY/app:${{ inputs.release_version }}_latest
+
+      # Комментарий в Issue
+      - name: Add deploy comment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Поиск Issue релиза
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all'
+            });
+            
+            const releaseIssue = issues.find(issue => 
+              issue.title.includes(`Release ${{ inputs.release_version }}`)
+            );
+            
+            if (releaseIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: releaseIssue.number,
+                body: `🚀 Deployed to production!\n\n` +
+                      `**Date:** ${new Date().toISOString()}\n` +
+                      `**By:** ${context.actor}`
+              });
+            }

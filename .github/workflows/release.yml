@@ -1,0 +1,99 @@
+name: Release
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    env:
+      REGISTRY: cr.yandex/${{ secrets.REGISTRY_ID }}
+      VERSION: ${{ github.run_number }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      # Запуск проверок
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+
+      # Создание релизной ветки
+      - name: Create release branch
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git checkout -b releases/$VERSION
+          git push origin releases/$VERSION
+
+      # Сборка и загрузка Docker-образа
+      - name: Build and push Docker image
+        env:
+          YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+        run: |
+          echo "$YC_SA_KEY" > key.json
+          yc config set service-account-key key.json
+          yc container registry configure-docker
+          docker build -t $REGISTRY/app:$VERSION .
+          docker tag $REGISTRY/app:$VERSION $REGISTRY/app:${VERSION}_latest
+          docker push $REGISTRY/app:$VERSION
+          docker push $REGISTRY/app:${VERSION}_latest
+
+      # Создание тега
+      - name: Create tag
+        run: |
+          git tag v$VERSION
+          git push origin v$VERSION
+
+      # Создание Issue и обновление CHANGELOG
+      - name: Create release issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Получение предыдущего тега
+            const tags = await github.rest.repos.listTags({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            const prevTag = tags.data[1]?.name || 'initial';
+            
+            // Получение коммитов
+            const commits = await github.rest.repos.compareCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: prevTag,
+              head: 'main'
+            });
+            
+            // Создание Issue
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release ${process.env.VERSION}`,
+              body: `**Version:** ${process.env.VERSION}\n\n` +
+                    `**Author:** ${context.actor}\n\n` +
+                    `**Commits:**\n${commits.data.commits.map(c => '- ' + c.commit.message).join('\n')}\n\n` +
+                    `**Image:** ${process.env.REGISTRY}/app:${process.env.VERSION}`
+            });
+            
+            // Обновление CHANGELOG.md
+            const fs = require('fs');
+            let changelog = fs.existsSync('CHANGELOG.md') ? fs.readFileSync('CHANGELOG.md', 'utf8') : '';
+            const newEntry = `# v${process.env.VERSION}\n\n` +
+                            `${commits.data.commits.map(c => '- ' + c.commit.message).join('\n')}\n\n`;
+            fs.writeFileSync('CHANGELOG.md', newEntry + changelog);
+            
+            // Коммит изменений
+            const { execSync } = require('child_process');
+            execSync('git add CHANGELOG.md');
+            execSync(`git commit -m "Update CHANGELOG for v${process.env.VERSION}"`);
+            execSync(`git push origin releases/${process.env.VERSION}`);
