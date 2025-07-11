@@ -1,0 +1,60 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to fix'
+        required: true
+        type: string
+      issue_number:
+        description: 'Issue number'
+        required: true
+        type: number
+
+jobs:
+  deploy:
+    name: Deploy Release ${{ inputs.release_version }} to Production
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
+      RELEASE_VERSION: ${{ inputs.release_version }}
+
+    steps:
+      - name: Check if image exists in Yandex Container Registry
+        run: |
+          TOKEN=$(curl -s -H "Authorization: Api-Key ${{ secrets.YC_API_KEY }}" \
+            "https://iam.api.cloud.yandex.net/iam/v1/tokens" \
+            -H "Content-Type: application/json" \
+            -d '{}') && \
+          IAM_TOKEN=$(echo $TOKEN | jq -r .iamToken)
+
+          IMAGE_CHECK=$(curl -s -H "Authorization: Bearer $IAM_TOKEN" \
+            "https://container-registry.api.cloud.yandex.net/container-registry/v1/repositories/${{ secrets.YC_REGISTRY_ID }}/app/tags")
+
+          echo "$IMAGE_CHECK" | grep "${RELEASE_VERSION}_latest" || (echo "Image not found" && exit 1)
+
+      - name: Deploy on production server over SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            docker stop app || true
+            docker rm app || true
+            docker pull $IMAGE_NAME:${RELEASE_VERSION}_latest
+            docker run -d --name app -p 3000:3000 $IMAGE_NAME:${RELEASE_VERSION}_latest
+
+      - name: Add comment to release issue
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ secrets.RELEASE_ISSUE_NUMBER }}
+          body: |
+            **Release Deployed to Production**
+
+            Date: ${{ github.event.date || github.event.head_commit.timestamp }}
+            Deployed by: @${{ github.actor }}
+            Image: `${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}_latest`
+            Host: `${{ secrets.SSH_HOST }}`
