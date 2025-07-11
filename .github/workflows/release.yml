@@ -76,14 +76,24 @@ jobs:
 
             const version = process.env.VERSION;
   
+              // 1) Получаем все теги
+            const { data: tags } = await github.rest.repos.listTags({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+              
+              // 2) Извлекаем их имена, отфильтровываем релизные и сортируем по убыванию
               const releaseTagNames = tags
               .map(t => t.name)
               .filter(name => name.startsWith('v') && !name.includes('fix'))
               .sort((a, b) => parseInt(b.slice(1), 10) - parseInt(a.slice(1), 10));
               
+              // 3) Ищем предыдущий релизный тег (отличный от текущего)
               const previousTag = releaseTagNames.find(name => name !== `v${version}`);
               console.log('Previous release tag:', previousTag || '«никогда не выпускали»');
               
+              // 4) Сравниваем коммиты между предыдущим тегом и текущим коммитом
               let compare;
               if (previousTag) {
               compare = await github.rest.repos.compareCommits({
@@ -93,6 +103,7 @@ jobs:
             head: context.sha
             });
             } else {
+              // Если это первый выпуск — берём только текущий коммит
               compare = await github.rest.repos.compareCommits({
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -100,16 +111,16 @@ jobs:
             head: context.sha
             });
             }
-              
-              const commitMessages = compare.data.commits
-              .map(c => c.commit.message.split('\n')[0])
-              .filter(msg => !msg.startsWith('Merge'));
-              
-              console.log(`Found ${commitMessages.length} new commits:`);
-              commitMessages.forEach(m => console.log('  •', m));
-              
-              
-              const changelogEntry = `# v${version}\n\n` +
+  
+            // 5) Составляем список коротких сообщений коммитов
+            const commitMessages = compare.data.commits
+            .map(c => c.commit.message.split('\n')[0])
+            .filter(msg => !msg.startsWith('Merge'));
+            
+            console.log(`Found ${commitMessages.length} new commits:`);
+            commitMessages.forEach(m => console.log('  •', m));
+            
+            const changelogEntry = `# v${version}\n\n` +
               commitMessages.map(msg => `- ${msg}`).join('\n') + '\n\n';
 
             const changelogPath = 'CHANGELOG.md';
