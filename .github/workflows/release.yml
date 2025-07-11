@@ -67,66 +67,89 @@ jobs:
                 repo: context.repo.repo,
                 per_page: 100
               });
-            
-              // Сортируем теги по дате создания
-              const sortedTags = tags.sort((a, b) => 
-                new Date(b.commit.committer.date) - new Date(a.commit.committer.date)
-              );
-            
-              // Находим последний релизный тег (начинается с 'v')
-              const lastReleaseTag = sortedTags.find(tag => tag.name.startsWith('v') && !tag.name.includes('fix'));
-            
-              let commitRange = 'main';
+
+              // Находим последний релизный тег (начинается с 'v' без 'fix')
+              let lastReleaseTag = null;
+              let latestDate = 0;
+
+              for (const tag of tags) {
+                if (tag.name.startsWith('v') && !tag.name.includes('fix')) {
+                  // Проверяем наличие даты коммита
+                  if (tag.commit && tag.commit.committer && tag.commit.committer.date) {
+                    const tagDate = new Date(tag.commit.committer.date).getTime();
+                    if (tagDate > latestDate) {
+                      latestDate = tagDate;
+                      lastReleaseTag = tag;
+                    }
+                  } else {
+                    console.log(`Tag ${tag.name} has no commit date, skipping`);
+                  }
+                }
+              }
+
               let commitMessages = [];
-            
+              let commitRange = 'main';
+
               if (lastReleaseTag) {
                 commitRange = `${lastReleaseTag.name}..main`;
-                // Получаем коммиты между тегами
-                const compare = await github.rest.repos.compareCommits({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  base: lastReleaseTag.name,
-                  head: 'main'
-                });
-                commitMessages = compare.data.commits.map(c => c.commit.message.split('\n')[0]);
-              } else {
-                // Первый релиз - берем все коммиты
-                const commits = await github.paginate(
-                  github.rest.repos.listCommits,
-                  {
+                try {
+                  // Получаем коммиты между тегами
+                  const compare = await github.rest.repos.compareCommits({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    base: lastReleaseTag.name,
+                    head: 'main'
+                  });
+                  commitMessages = compare.data.commits.map(c => c.commit.message.split('\n')[0]);
+                } catch (compareError) {
+                  console.error('Error comparing commits:', compareError);
+                  // Получаем последние 20 коммитов как fallback
+                  const commits = await github.rest.repos.listCommits({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     sha: 'main',
-                    per_page: 100
-                  }
-                );
-                commitMessages = commits.map(c => c.commit.message.split('\n')[0]);
+                    per_page: 20
+                  });
+                  commitMessages = commits.data.map(c => c.commit.message.split('\n')[0]);
+                }
+              } else {
+                console.log('No previous release tag found, using last 20 commits');
+                // Для первого релиза берем последние 20 коммитов
+                const commits = await github.rest.repos.listCommits({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  sha: 'main',
+                  per_page: 20
+                });
+                commitMessages = commits.data.map(c => c.commit.message.split('\n')[0]);
               }
-            
+
               // Создаем Issue
               const issueBody = `**Version:** ${process.env.VERSION}\n\n` +
                                `**Author:** ${context.actor}\n\n` +
-                               `**Commits:**\n${commitMessages.map(m => '- ' + m).join('\n')}\n\n` +
+                               `**Commits (${commitRange}):**\n${commitMessages.map(m => '- ' + m).join('\n')}\n\n` +
                                `**Image:** ${process.env.REGISTRY}/app:${process.env.VERSION}\n\n` +
                                `**Date:** ${new Date().toISOString()}`;
-            
+
               const issue = await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title: `Release ${process.env.VERSION}`,
                 body: issueBody
               });
-            
+              console.log(`Created issue #${issue.data.number}`);
+
               // Обновляем CHANGELOG.md
               const fs = require('fs');
               let changelog = '';
               if (fs.existsSync('CHANGELOG.md')) {
                 changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
               }
+
               const newEntry = `# v${process.env.VERSION}\n\n` +
                               `${commitMessages.map(m => '- ' + m).join('\n')}\n\n`;
               fs.writeFileSync('CHANGELOG.md', newEntry + changelog);
-            
+
               // Коммитим изменения
               const { execSync } = require('child_process');
               execSync('git config user.name "GitHub Actions"');
@@ -134,11 +157,26 @@ jobs:
               execSync('git add CHANGELOG.md');
               execSync(`git commit -m "Update CHANGELOG for v${process.env.VERSION}"`);
               execSync(`git push origin releases/${process.env.VERSION}`);
-            
+
             } catch (error) {
-              console.error('Error creating release:', error);
-              // Fallback: создать минимальный релиз без коммитов
+              console.error('Error creating release artifacts:', error);
+              // Fallback: создать минимальный релиз
               const fs = require('fs');
-              fs.writeFileSync('CHANGELOG.md', `# v${process.env.VERSION}\n\nFirst release!\n\n`);
-              console.log('Created minimal CHANGELOG as fallback');
+              const minimalChangelog = `# v${process.env.VERSION}\n\nRelease ${process.env.VERSION}\n\n`;
+              if (fs.existsSync('CHANGELOG.md')) {
+                const current = fs.readFileSync('CHANGELOG.md', 'utf8');
+                fs.writeFileSync('CHANGELOG.md', minimalChangelog + current);
+              } else {
+                fs.writeFileSync('CHANGELOG.md', minimalChangelog);
+              }
+
+              // Коммитим fallback
+              const { execSync } = require('child_process');
+              execSync('git config user.name "GitHub Actions"');
+              execSync('git config user.email "actions@github.com"');
+              execSync('git add CHANGELOG.md');
+              execSync(`git commit -m "Add minimal CHANGELOG for v${process.env.VERSION}"`);
+              execSync(`git push origin releases/${process.env.VERSION}`);
+
+              throw new Error('Partial success: Created minimal release due to errors');
             }
