@@ -23,7 +23,8 @@ jobs:
       - name: Checkout release branch
         uses: actions/checkout@v4
         with:
-          ref: releases/$BASE_VERSION
+          ref: releases/${{ inputs.release_version }}
+          fetch-depth: 0
           
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -45,14 +46,14 @@ jobs:
           docker push $DOCKER_REGISTRY:$HOTFIX_TAG
           docker push $DOCKER_REGISTRY:${BASE_VERSION}_latest
           
-      - name: Tag hotfix
+      - name: Tag fix
         run: |
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
           git tag v$HOTFIX_TAG
           git push origin v$HOTFIX_TAG
           
-      - name: Generate hotfix notes
+      - name: Generate fix notes
         id: hotfix-notes
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 v$HOTFIX_TAG^ 2>/dev/null || echo "v$BASE_VERSION")
