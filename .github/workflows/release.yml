@@ -98,17 +98,8 @@ jobs:
           } > CHANGELOG.tmp
           mv CHANGELOG.tmp CHANGELOG.md
           git add CHANGELOG.md
-          git commit -m "docs: update CHANGELOG for v${VERSION}" || echo "No changes to changelog"
+          git commit -m "CHANGELOG for v${VERSION}"
           git push origin releases/${VERSION}
-
-      - name: Open PR to main for CHANGELOG
-        run: |
-          gh auth login --with-token <<< "${{ secrets.PAT_TOKEN }}"
-          gh pr create \
-            --base main \
-            --head releases/${VERSION} \
-            --title "Release v${VERSION}: update CHANGELOG" \
-            --body "Automated PR to merge updated CHANGELOG for v${VERSION}"
 
       - name: Create GitHub Issue for Release Notes
         run: |
