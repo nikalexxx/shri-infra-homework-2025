@@ -35,7 +35,7 @@ jobs:
         with:
           registry-id: ${{ secrets.REESTR_ID }}
           app-name: app
-          tags: "${{ env.VERSION }}_fix${{ env.FIX_NO }} ${{ env.VERSION }}_latest"
+          tags: "${{ env.VERSION }} ${{ env.VERSION }}_latest"
           ycr-token: ${{ secrets.YCR_TOKEN }}
 
   # 3. Создание релизной ветки
