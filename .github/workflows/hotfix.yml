@@ -59,15 +59,47 @@ jobs:
         with:
           script: |
             const releaseVersion = "${{ github.event.inputs.release_version }}";
+            const fixNumber = "${{ github.run_number }}";
             
-            // Поиск Issue релиза по номеру версии в названии
+            // Получаем список тегов
+            const { data: tags } = await github.rest.repos.listTags({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            
+            // Ищем предыдущий тег (релиз или фикс)
+            const prevTag = tags.find(tag => 
+              tag.name.startsWith(`v${releaseVersion}_fix`) || 
+              tag.name === `v${releaseVersion}`
+            );
+            
+            // Получаем коммиты с момента предыдущего тега
+            let commitMessages = [];
+            if (prevTag) {
+              const compare = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: prevTag.name,
+                head: 'releases/' + releaseVersion
+              });
+              commitMessages = compare.data.commits.map(c => c.commit.message.split('\n')[0]);
+            } else {
+              // Если не нашли предыдущий тег, берем все коммиты в ветке релиза
+              const commits = await github.rest.repos.listCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: 'releases/' + releaseVersion
+              });
+              commitMessages = commits.data.map(c => c.commit.message.split('\n')[0]);
+            }
+            
+            // Поиск Issue релиза
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'all'
             });
             
-            // Ищем issue, содержащее номер версии в названии
             const releaseIssue = issues.find(issue => 
               issue.title.includes(`Release ${releaseVersion}`) || 
               issue.title.includes(`v${releaseVersion}`)
@@ -75,28 +107,32 @@ jobs:
             
             if (releaseIssue) {
               console.log(`Found release issue: #${releaseIssue.number} - ${releaseIssue.title}`);
+            
+              const commentBody = `**Hotfix applied!**\n\n` +
+                `**Version:** ${releaseVersion}_fix${fixNumber}\n\n` +
+                `**Author:** ${context.actor}\n\n` +
+                `**Commits since last release/fix:**\n${commitMessages.map(m => '- ' + m).join('\n')}\n\n` +
+                `**Image:** ${process.env.REGISTRY}/app:${releaseVersion}_fix${fixNumber}\n\n` +
+                `**Date:** ${new Date().toISOString()}`;
+            
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: releaseIssue.number,
-                body: `**Hotfix applied!**\n\n` +
-                      `**Version:** ${releaseVersion}_fix${process.env.FIX_NUMBER}\n\n` +
-                      `**Author:** ${context.actor}\n\n` +
-                      `**Image:** ${process.env.REGISTRY}/app:${releaseVersion}_fix${process.env.FIX_NUMBER}\n\n` +
-                      `**Date:** ${new Date().toISOString()}`
+                body: commentBody
               });
               console.log(`Comment added to issue #${releaseIssue.number}`);
             } else {
               console.error(`Release issue for version ${releaseVersion} not found!`);
-              // Создаем новое issue, если не нашли существующее
               const newIssue = await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title: `Hotfix for Release ${releaseVersion}`,
-                body: `Original release issue not found!\n\n` +
-                      `**Hotfix version:** ${releaseVersion}_fix${process.env.FIX_NUMBER}\n\n` +
+                body: `⚠️ Original release issue not found!\n\n` +
+                      `**Hotfix version:** ${releaseVersion}_fix${fixNumber}\n\n` +
                       `**Author:** ${context.actor}\n\n` +
-                      `**Image:** ${process.env.REGISTRY}/app:${releaseVersion}_fix${process.env.FIX_NUMBER}`
+                      `**Commits:**\n${commitMessages.map(m => '- ' + m).join('\n')}\n\n` +
+                      `**Image:** ${process.env.REGISTRY}/app:${releaseVersion}_fix${fixNumber}`
               });
               console.log(`Created new issue: #${newIssue.data.number}`);
             }

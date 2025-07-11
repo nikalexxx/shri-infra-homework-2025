@@ -71,31 +71,31 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo
               });
-            
-              // Определяем предыдущий тег или используем начальный коммит
-              let prevRef = 'HEAD~1'; // По умолчанию сравниваем с предыдущим коммитом
-              if (tags.length > 0) {
-                prevRef = tags[0].name; // Берем последний тег
-              }
-            
-              // Получаем коммиты
-              let commits = [];
-              try {
+              
+              // Ищем предыдущий тег (релиз или фикс)
+              const prevTag = tags.find(tag => 
+                tag.name.startsWith(`v${releaseVersion}_fix`) || 
+                tag.name === `v${releaseVersion}`
+              );
+              
+              // Получаем коммиты с момента предыдущего тега
+              let commitMessages = [];
+              if (prevTag) {
                 const compare = await github.rest.repos.compareCommits({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  base: prevRef,
-                  head: 'main'
+                  base: prevTag.name,
+                  head: 'releases/' + releaseVersion
                 });
-                commits = compare.data.commits;
-              } catch (compareError) {
-                console.log('Не удалось сравнить коммиты, используем последний коммит');
-                const lastCommit = await github.rest.repos.getCommit({
+                commitMessages = compare.data.commits.map(c => c.commit.message.split('\n')[0]);
+              } else {
+                // Если не нашли предыдущий тег, берем все коммиты в ветке релиза
+                const commits = await github.rest.repos.listCommits({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  ref: 'main'
+                  sha: 'releases/' + releaseVersion
                 });
-                commits = [lastCommit.data];
+                commitMessages = commits.data.map(c => c.commit.message.split('\n')[0]);
               }
             
               // Создаем Issue
@@ -105,8 +105,9 @@ jobs:
                 title: `Release ${process.env.VERSION}`,
                 body: `**Version:** ${process.env.VERSION}\n\n` +
                       `**Author:** ${context.actor}\n\n` +
-                      `**Commits:**\n${commits.map(c => '- ' + c.commit.message.split('\n')[0]).join('\n')}\n\n` +
+                      `**Commits since last release/fix:**\n${commitMessages.map(m => '- ' + m).join('\n')}\n\n` +
                       `**Image:** ${process.env.REGISTRY}/app:${process.env.VERSION}`
+                      `**Date:** ${new Date().toISOString()}`
               });
             
               // Обновляем CHANGELOG.md
