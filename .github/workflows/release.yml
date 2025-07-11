@@ -39,21 +39,16 @@ jobs:
       - name: Login to Yandex Container Registry
         run: echo "${{ secrets.YCR_TOKEN }}" | docker login --username oauth --password-stdin ${{ env.REGISTRY_HOST }}
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build and Push Docker image
         run: |
-          docker buildx build \
-            --tag cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }} \
-            --tag cr.yandex/${{ secrets.REESTR_ID }}/app:${{ github.run_number }}_latest \
-            --push \
+          -t ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION} \
+          -t ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}_latest \
             .
 
       - name: Push images
         run: |
-          docker push ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }}
-          docker push ${{ env.REGISTRY_HOST }}/${{ env.REESTR_ID }}/${{ env.APP_NAME }}:${{ env.VERSION }}_latest
+          docker push ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}
+          docker push ${REGISTRY_HOST}/${REESTR_ID}/${APP_NAME}:${VERSION}_latest
 
   release-branch:
     name: Create Release Branch
