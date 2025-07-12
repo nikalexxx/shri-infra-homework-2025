@@ -65,30 +65,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          type -p gh >/dev/null || sudo apt-get install -y gh
-          
-          gh auth login --with-token <<< "$GITHUB_TOKEN"
-          
-          BASE_VERSION=$(echo "${{ github.event.inputs.release_version }}" | sed 's/_fix.*//')
-          
-          ISSUE_ID=$(gh issue list --search "Release v${BASE_VERSION}" --json number -q '.[0].number' 2>/dev/null)
-          
-          if [ -z "$ISSUE_ID" ]; then
-            echo "::warning::Release issue for v${BASE_VERSION} not found!"
-            ISSUE_ID=$(gh issue create \
-              --title "Deployment of v${BASE_VERSION}" \
-              --body "Automatic issue created for deployment tracking" \
-              --json number -q '.number')
-            echo "Created new issue #$ISSUE_ID"
-          fi
-          
-          COMMENT="🚀 **Deployed to production**\n\n"\
+            ISSUE_NUMBER=$(gh issue list --state open --json number,title | jq -r '.[] | select(.title | contains("Release v${{ github.event.inputs.version }}")) | .number')
+            if [ -z "$ISSUE_NUMBER" ]; then
+              echo "Issue для версии ${{ github.event.inputs.version }} не найдено"
+              exit 1
+            fi
+            COMMENT="🚀 **Deployed to production**\n\n"\
                   "**Release version:** ${{ github.event.inputs.release_version }}\n"\
                   "**Docker image:** ${{ env.REGISTRY }}/app:${{ github.event.inputs.release_version }}_latest\n"\
                   "**Deployed at:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')\n"\
                   "**Deployed by:** ${{ github.actor }}\n"\
                   "**Access URL:** http://${{ secrets.VM_IP }}:3000/hw/store"
-          
-          gh issue comment $ISSUE_ID --body "$COMMENT"
-          
-          echo "Added deployment comment to issue #$ISSUE_ID"
+            gh issue comment $ISSUE_NUMBER --body "$COMMENT"
