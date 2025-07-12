@@ -12,24 +12,27 @@ jobs:
     env:
       IMAGE: cr.yandex/${{ secrets.YC_REGISTRY }}/app:${{ inputs.version }}_latest
     steps:
-      - name: Проверяем, что образ существует
-        run: docker manifest inspect "$IMAGE" > /dev/null
+      - name: login to container registry
+        run: docker login cr.yandex -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }}
 
-      - name: Деплой на ВМ
+      - name: check if image exists
+        run: docker manifest inspect "$IMAGE" >/dev/null
+
+      - name: deploy to vm
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.VM_HOST }}
+          host:     ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
+          key:      ${{ secrets.VM_SSH_KEY }}
           script: |
             docker login cr.yandex -u oauth -p '${{ secrets.YC_OAUTH_TOKEN }}'
             docker pull $IMAGE
             docker stop app || true && docker rm app || true
             docker run -d --name app -p 80:3000 $IMAGE
 
-      - name: Comment issue
+      - name: open deploy issue
+        run: |
+          gh issue comment --search "Deploy ${{ inputs.version }}" \
+            --body "**🚀 Выкат в прод**: $(date)\n**Автор:** ${{ github.actor }}\nОбраз: \`$IMAGE\`"
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          gh issue comment --search "Release ${{ inputs.version }}" \
-            --body "**🚀 Прод**: выкатил $(date)\nобраз \`$IMAGE\`"
