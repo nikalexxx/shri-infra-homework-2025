@@ -46,12 +46,11 @@ jobs:
                     --json number \
                     -q '.[0].number')
 
-          if [ -n "$ISSUE" ]; then
-            BODY=$(cat 
-              <<EOF
+          if [ -n "$ISSUE" ]; then          
+            BODY=$(cat <<EOF
                 **🚀 Выкат в прод**: $(date)
                 **Автор:** ${{ github.actor }}
-              EOF
+            EOF
             )
             gh issue comment "$ISSUE" \
               --repo "$REPO" \
