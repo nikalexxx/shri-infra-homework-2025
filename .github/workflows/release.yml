@@ -3,6 +3,10 @@ name: Release
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write  
+  issues: write     
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -17,23 +21,29 @@ jobs:
         with:
           node-version: 18
 
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
 
       - name: Create release branch
         run: |
           git config user.name "${{ github.actor }}"
-          git config user.email "ci@example.com"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
           git checkout -b releases/${VERSION}
-          git push origin releases/${VERSION}
+          git push --set-upstream origin releases/${VERSION}
 
-      - name: Build Docker
+      - name: Build Docker image
         run: docker build -t $REGISTRY:${VERSION} -t $REGISTRY:${VERSION}_latest .
 
       - name: Login to Yandex Container Registry
-        run: echo "${{ secrets.YC_SERVICE_KEY }}" > key.json && \
-             docker login --username oauth --password-stdin cr.yandex <<< "$(cat key.json | jq -r .access_token)"
+        run: |
+          echo "${{ secrets.YC_SERVICE_KEY }}" > key.json
+          docker login --username oauth --password-stdin cr.yandex <<< "$(jq -r .access_token < key.json)"
 
       - name: Push Docker images
         run: |
@@ -49,13 +59,20 @@ jobs:
         id: changelog
         run: |
           git fetch --tags
-          PREV=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | head -n1)
-          git log $PREV..HEAD --oneline > commits.txt
+          PREV=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | head -n2 | tail -n1)
+          if [ -z "$PREV" ]; then
+            git log --oneline > commits.txt
+          else
+            git log $PREV..HEAD --oneline > commits.txt
+          fi
           echo "COMMITS<<EOF" >> $GITHUB_ENV
           cat commits.txt >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Create issue
+      - name: Authenticate GitHub CLI
+        run: echo "${{ secrets.GH_TOKEN }}" | gh auth login --with-token
+
+      - name: Create release issue
         run: |
           gh issue create \
             --title "Release $VERSION" \
