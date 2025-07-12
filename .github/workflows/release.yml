@@ -36,14 +36,20 @@ jobs:
           yc config set service-account-key key.json
           yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
           yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
-          IAM_TOKEN=$(yc iam create-token)
+          
+          # Получаем IAM токен через сервисный аккаунт
+          IAM_TOKEN=$(curl -s -H "Metadata-Flavor: Google" "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token" | jq -r .access_token)
           [ -z "$IAM_TOKEN" ] && exit 1
+          
+          # Логинимся в Docker Registry
           echo "$IAM_TOKEN" | docker login --username iam --password-stdin cr.yandex
+          
+          # Проверяем успешность аутентификации
           cat ~/.docker/config.json | grep "cr.yandex" || exit 1
           rm -f key.json
 
       - name: Install project dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Run checks
         run: |
@@ -59,10 +65,17 @@ jobs:
 
       - name: Build and push Docker image
         run: |
+          # Собираем образ
           docker build -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }} .
+          
+          # Добавляем тег latest
           docker tag cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }} cr.yandex/${{ secrets.REGISTRY_ID }}/app:latest
+          
+          # Пушим оба тега
           docker push cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }}
           docker push cr.yandex/${{ secrets.REGISTRY_ID }}/app:latest
+          
+          # Проверяем что образы появились в реестре
           yc container image list --repository-name=cr.yandex/${{ secrets.REGISTRY_ID }}/app | grep ${{ github.run_number }} || exit 1
 
       - name: Create version tag
