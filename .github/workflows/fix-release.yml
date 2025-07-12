@@ -62,9 +62,12 @@ jobs:
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 v$HOTFIX_TAG^ 2>/dev/null || echo "v$BASE_VERSION")
           COMMITS=$(git log $PREV_TAG..HEAD --pretty=format:"- %h %s (%an)")
-          echo "notes<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS"
-          echo "EOF" >> $GITHUB_OUTPUT
+          
+          {
+            echo "notes<<EOF"
+            echo "$COMMITS"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Update issue
         if: github.event.repository.has_issues
