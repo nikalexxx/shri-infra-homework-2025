@@ -39,7 +39,7 @@ jobs:
           git push -u origin releases/${{ github.run_number }}
 
       - name: Login to Yandex Cloud Container Registry
-        uses: yandex-cloud/github-actions/login-cr@main
+        uses: yc-actions/yc-cr-login@v1
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
 
