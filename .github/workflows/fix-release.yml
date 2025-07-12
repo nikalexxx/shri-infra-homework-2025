@@ -17,7 +17,8 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  
     steps:
       - uses: actions/checkout@v3
-
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v3
         with:
           node-version: '22'
@@ -47,8 +48,8 @@ jobs:
 
       - name: Find Issue number and comment
         run: |
-          ISSUE_NUMBER=$(gh issue list --state open --limit 10 --json number,title | \
-            grep -B1 "Release v$VERSION" | grep '"number":' | head -n1 | sed 's/[^0-9]*//g')
+          ISSUE_NUMBER=$(gh issue list --state open --json number,title \
+            --jq ".[] | select(.title | test(\"Release v$VERSION\")) | .number" | head -n1)
 
           if [ -z "$ISSUE_NUMBER" ]; then
             echo "❌ Issue not found for version v$VERSION"
