@@ -1,103 +1,73 @@
 name: Deploy to Prod
 
+description: "Выкачка образа на прод-сервер через SSH"
+
 on:
-    workflow_dispatch:
-        inputs:
-            version:
-                description: "Версия образа"
-                required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: "Версия Docker-образа для выкатки в прод"
 
 jobs:
-    deploy:
-        runs-on: ubuntu-latest
-        env:
-            REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
-            VERSION: ${{ github.event.inputs.version }}
+  deploy:
+    name: 🚀 Deploy version to production server
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+      VERSION: ${{ github.event.inputs.version }}
 
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+    steps:
+      - name: 📃 Лог версии и реестра
+        run: |
+          echo "Будем деплоить версию: $VERSION"
+          echo "Из реестра: $REGISTRY"
 
-            - name: Install and setup Yandex CLI
-              env:
-                  YC_SERVICE_KEY: ${{ secrets.YC_SERVICE_KEY }}
-              run: |
-                  echo "=== Installing Yandex CLI ==="
-                  curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+      - name: ✨ Проверка доступности образа в YCR
+        run: |
+          echo "Проверяем наличие тега $VERSION\_latest в YCR..."
+          docker manifest inspect $REGISTRY:${VERSION}_latest >/dev/null || {
+            echo "❌ Образ с тегом ${VERSION}_latest не найден в Container Registry";
+            exit 1;
+          }
+          echo "✅ Образ найден."
 
-                  export PATH="$HOME/yandex-cloud/bin:$PATH"
-                  echo "=== Yandex CLI version ==="
-                  yc --version
+      - name: 🚚 Подключение к серверу и деплой
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ${{ secrets.VM_SSH_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            echo "=== Начинаем деплой на сервер ==="
 
-                  echo "=== Saving YC_SERVICE_KEY to key.json ==="
-                  printf '%s' "$YC_SERVICE_KEY" > key.json
+            echo "1. Получение YC access token..."
+            echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
+            echo "key.json содержимое (безопасно скрыто)"
+            ACCESS_TOKEN=$(cat key.json | jq -r .access_token)
+            echo "2. Логинимся в Docker Registry..."
+            echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
 
-                  echo "=== Creating IAM token ==="
-                  TOKEN=$(yc iam create-token --key-file key.json)
-                  echo "IAM token obtained"
+            echo "3. Остановка и удаление предыдущего контейнера..."
+            docker stop app || true
+            docker rm app || true
 
-                  echo "=== Logging in to Yandex Container Registry ==="
-                  echo "$TOKEN" | docker login --username oauth --password-stdin cr.yandex
+            echo "4. Пулл образа..."
+            docker pull $REGISTRY:${VERSION}_latest
 
-            - name: Authenticate with Yandex CLI and login to Yandex Container Registry
-              env:
-                  YC_SERVICE_KEY: ${{ secrets.YC_SERVICE_KEY }}
-              run: |
-                  echo "=== Saving YC_SERVICE_KEY to key.json ==="
-                  printf '%s' "$YC_SERVICE_KEY" > key.json
-                  echo "=== Contents of key.json ==="
-                  cat key.json
-                  echo "=== Validating key.json with jq ==="
-                  jq . key.json
+            echo "5. Запуск контейнера..."
+            docker run -d --name app -p 80:3000 $REGISTRY:${VERSION}_latest
 
-                  echo "=== Creating IAM token ==="
-                  TOKEN=$(yc iam create-token --key-file key.json)
-                  if [ -z "$TOKEN" ]; then
-                    echo "Error: Failed to get IAM token"
-                    exit 1
-                  fi
-                  echo "IAM token obtained (hidden for security)"
+            echo "6. Проверка контейнера..."
+            docker ps | grep app
+            echo "✅ Деплой завершён."
 
-                  echo "=== Logging in to Yandex Container Registry ==="
-                  echo "$TOKEN" | docker login --username oauth --password-stdin cr.yandex
-                  echo "Docker login successful"
-
-            - name: Deploy on remote server via SSH
-              uses: appleboy/ssh-action@v0.1.7
-              with:
-                  host: ${{ secrets.VM_IP }}
-                  username: ${{ secrets.VM_SSH_USER }}
-                  key: ${{ secrets.VM_SSH_KEY }}
-                  script: |
-                      echo "=== Saving YC_SERVICE_KEY to key.json on server ==="
-                      printf '%s' '${{ secrets.YC_SERVICE_KEY }}' > key.json
-                      echo "=== Contents of key.json on server ==="
-                      cat key.json
-                      echo "=== Validating key.json on server with jq ==="
-                      jq . key.json || { echo "jq validation failed on server"; exit 1; }
-
-                      echo "=== Creating IAM token on server ==="
-                      TOKEN=$(yc iam create-token --key-file key.json)
-                      if [ -z "$TOKEN" ]; then
-                        echo "Error: Failed to get IAM token on server"
-                        exit 1
-                      fi
-                      echo "IAM token obtained on server (hidden)"
-
-                      echo "=== Logging in to Yandex Container Registry on server ==="
-                      echo "$TOKEN" | docker login --username oauth --password-stdin cr.yandex
-                      echo "Docker login successful on server"
-
-                      echo "=== Stopping old container if exists ==="
-                      docker stop app || echo "No container to stop"
-
-                      echo "=== Removing old container if exists ==="
-                      docker rm app || echo "No container to remove"
-
-                      echo "=== Pulling new image $REGISTRY:${VERSION}_latest ==="
-                      docker pull $REGISTRY:${VERSION}_latest
-
-                      echo "=== Starting new container ==="
-                      docker run -d --name app -p 80:3000 $REGISTRY:${VERSION}_latest
-
-                      echo "=== Deployment completed successfully ==="
+      - name: 📊 Добавление комментария в GitHub Issue
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.inputs.version }} 
+          body: |
+            🌐 Релиз **${{ github.event.inputs.version }}** выкачан в прод 
+            📅 Дата: $(date +%F)
+            👤 Автор: @${{ github.actor }}
+            📦 Образ: `${{ env.REGISTRY }}:${{ env.VERSION }}_latest`
