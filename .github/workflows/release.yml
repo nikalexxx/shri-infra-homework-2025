@@ -11,7 +11,7 @@ jobs:
 
     env:
       VERSION_RAW: ${{ github.event_name == 'workflow_dispatch'
-        && inputs.version || github.ref_name }}
+        && inputs.version || github.run_number }}
       IMAGE: cr.yandex/${{ secrets.YC_REGISTRY }}/app
 
     steps:
@@ -27,7 +27,7 @@ jobs:
           VER=${VERSION_RAW#releases/}
           echo "VERSION=$VER" >>"$GITHUB_ENV"
 
-      - name: create release branch
+      - name: ensure release branch
         run: |
           if git show-ref --quiet refs/heads/releases/${VERSION}; then
             git switch releases/${VERSION}
@@ -119,14 +119,9 @@ jobs:
           echo "pr=$PR_URL" >> $GITHUB_OUTPUT
           echo "Opened $PR_URL"
 
-      - name: wait for PR checks
+      - name: enable auto-merge
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          gh pr checks "${{ steps.pr.outputs.pr }}" --watch
-
-      - name: merge PR
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          gh pr merge "${{ steps.pr.outputs.pr }}" --merge --admin --delete-branch
+          gh pr merge "${{ steps.pr.outputs.pr }}" \
+            --merge --auto --delete-branch
