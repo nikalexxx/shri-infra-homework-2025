@@ -103,7 +103,7 @@ jobs:
                   fi
 
                   echo "Найден issue номер: $ISSUE_NUMBER"
-                  echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTP
+                  echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
 
             - name: 📊 Добавление комментария в GitHub Issue
               uses: peter-evans/create-or-update-comment@v4
