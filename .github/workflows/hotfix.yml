@@ -14,6 +14,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: 'releases/${{ github.event.inputs.release_version }}'
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -26,6 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: 'releases/${{ github.event.inputs.release_version }}'
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -40,11 +42,15 @@ jobs:
       issues: write
     env:
       REGISTRY: ${{ secrets.REGISTRY_ID }}
+      RELEASE_VERSION: ${{ github.event.inputs.release_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: 'releases/${{ github.event.inputs.release_version }}'
           fetch-depth: 0
+
+      - name: Fetch all tags
+        run: git fetch --tags --force
 
       - name: Set fix number
         id: set-fix-number
@@ -53,40 +59,43 @@ jobs:
       - name: Build and push Docker image
         env:
           YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
-          RELEASE_VERSION: ${{ github.event.inputs.release_version }}
-          FIX_NUMBER: ${{ steps.set-fix-number.outputs.FIX_NUMBER }}
         run: |
           echo "$YC_SA_KEY" | docker login \
             --username json_key \
             --password-stdin cr.yandex
           
-          docker build -t $REGISTRY/app:${RELEASE_VERSION}_fix${FIX_NUMBER} .
-          docker tag $REGISTRY/app:${RELEASE_VERSION}_fix${FIX_NUMBER} \
+          docker build -t $REGISTRY/app:${RELEASE_VERSION}_fix${{ steps.set-fix-number.outputs.FIX_NUMBER }} .
+          docker tag $REGISTRY/app:${RELEASE_VERSION}_fix${{ steps.set-fix-number.outputs.FIX_NUMBER }} \
             $REGISTRY/app:${RELEASE_VERSION}_latest
           
-          docker push $REGISTRY/app:${RELEASE_VERSION}_fix${FIX_NUMBER}
+          docker push $REGISTRY/app:${RELEASE_VERSION}_fix${{ steps.set-fix-number.outputs.FIX_NUMBER }}
           docker push $REGISTRY/app:${RELEASE_VERSION}_latest
 
       - name: Determine last tag in release
         id: find_prev
         run: |
-          PREV=$(git tag --list "v${RELEASE_VERSION}*" --sort=-v:refname | head -n 1)
+          PREV=$(git tag --list "v${RELEASE_VERSION}*" --sort=-creatordate | head -n 1)
           
           if [ -z "$PREV" ]; then
             PREV="v${RELEASE_VERSION}"
           fi
           echo "previous_tag=$PREV" >> $GITHUB_OUTPUT
-          echo "Previous tag: $PREV"
+          echo "Found previous tag: $PREV"
 
       - name: Create fix tag
         run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           git tag v${RELEASE_VERSION}_fix${{ steps.set-fix-number.outputs.FIX_NUMBER }}
           git push origin v${RELEASE_VERSION}_fix${{ steps.set-fix-number.outputs.FIX_NUMBER }}
 
       - name: Get commit history
         id: get-commits
         run: |
-          COMMITS=$(git log ${PREV}..HEAD --pretty=format:"- %s" --no-merges)
+          PREV_TAG="${{ steps.find_prev.outputs.previous_tag }}"
+          echo "Using previous tag: $PREV_TAG"
+          
+          COMMITS=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges)
           echo "COMMITS<<EOF" >> $GITHUB_ENV
           echo "$COMMITS" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -94,16 +103,15 @@ jobs:
       - name: Add comment to release issue
         env:
           FIX_NUMBER: ${{ steps.set-fix-number.outputs.FIX_NUMBER }}
-          RELEASE_VERSION: ${{ github.event.inputs.release_version }}
-          COMMITS: ${{ env.COMMITS }}
         run: |
-          type -p gh >/dev/null || sudo apt-get install -y gh
+          sudo apt-get install -y gh  
           gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
-          ISSUE_ID=$(gh issue list --search "Release v${RELEASE_VERSION}" --json number -q '.[0].number')
+          
+          ISSUE_ID=$(gh issue list --search "Release v${RELEASE_VERSION} in:title" --json number -q '.[0].number')
           
           if [ -z "$ISSUE_ID" ]; then
-            echo "Release issue not found!"
-            exit 1
+            echo "⚠️ Release issue not found!"
+            exit 0  
           fi
           
           COMMENT=$(cat <<EOF
@@ -114,8 +122,8 @@ jobs:
           **Author:** ${{ github.actor }}  
           **Docker image:** \`${{ env.REGISTRY }}/app:${RELEASE_VERSION}_fix${FIX_NUMBER}\`  
           
-          **Commits since last fix:**
-          ${COMMITS}
+          **Commits since last release:**
+          ${{ env.COMMITS }}
           EOF
           )
           
