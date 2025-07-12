@@ -34,7 +34,7 @@ jobs:
 
       - name: Configure Docker to use Yandex credential helper
         run: |
-          yc container registry configure-docker --registry ${{ env.REGISTRY_URL }}
+            yc container registry configure-docker
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
