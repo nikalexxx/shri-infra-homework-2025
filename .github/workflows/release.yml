@@ -18,7 +18,15 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq docker.io
+          sudo apt-get install -y jq
+          
+          sudo apt-get remove -y containerd docker.io || true
+          sudo install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+          sudo usermod -aG docker $USER
 
       - name: Install Yandex Cloud CLI
         run: |
@@ -32,15 +40,15 @@ jobs:
           cat <<EOF > key.json
           ${{ secrets.YC_SA_KEY }}
           EOF
-
+          
           jq . key.json || (echo "Invalid JSON format!"; exit 1)
-                  
+          
           yc config set service-account-key key.json
           yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
           yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
           yc container registry configure-docker
           rm -f key.json
-
+          
           yc iam cloud list
 
       - name: Run lint and tests
