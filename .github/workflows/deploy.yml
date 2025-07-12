@@ -14,19 +14,20 @@ jobs:
     name: 🚀 Deploy version to production server
     runs-on: ubuntu-latest
     env:
-      REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+      REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+      IMAGE_NAME: app
       VERSION: ${{ github.event.inputs.version }}
 
     steps:
       - name: 📃 Лог версии и реестра
         run: |
           echo "Будем деплоить версию: $VERSION"
-          echo "Из реестра: $REGISTRY"
+          echo "Из реестра: $REGISTRY/$IMAGE_NAME"
 
       - name: ✨ Проверка доступности образа в YCR
         run: |
           echo "Проверяем наличие тега ${VERSION}_latest в YCR..."
-          docker pull $REGISTRY:${VERSION}_latest >/dev/null || {
+          docker pull $REGISTRY/$IMAGE_NAME:${VERSION}_latest >/dev/null || {
             echo "❌ Образ с тегом ${VERSION}_latest не найден в Container Registry"
             exit 1
           }
@@ -38,12 +39,12 @@ jobs:
           host: ${{ secrets.VM_IP }}
           username: ${{ secrets.VM_SSH_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          envs: IMAGE_NAME,REGISTRY,VERSION
           script: |
             echo "=== Начинаем деплой на сервер ==="
 
             echo "1. Получение YC access token..."
             echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
-            echo "key.json сохранён (не выводим содержимое)"
             ACCESS_TOKEN=$(cat key.json | jq -r .access_token)
 
             echo "2. Логинимся в Docker Registry..."
@@ -54,10 +55,10 @@ jobs:
             docker rm app || true
 
             echo "4. Пулл образа..."
-            docker pull $REGISTRY:${VERSION}_latest
+            docker pull $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
             echo "5. Запуск контейнера..."
-            docker run -d --name app -p 80:3000 $REGISTRY:${VERSION}_latest
+            docker run -d --name app -p 80:3000 $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
             echo "6. Проверка контейнера..."
             docker ps | grep app
@@ -71,4 +72,4 @@ jobs:
             🌐 Релиз **${{ github.event.inputs.version }}** выкачан в прод  
             📅 Дата: $(date +%F)  
             👤 Автор: @${{ github.actor }}  
-            📦 Образ: `${{ env.REGISTRY }}:${{ env.VERSION }}_latest`
+            📦 Образ: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest`
