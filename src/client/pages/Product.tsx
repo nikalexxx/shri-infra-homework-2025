@@ -12,6 +12,7 @@ export interface ProductRouteParams {
   [key: string]: string;
 }
 //
+//
 const bem = cn("Product");
 
 export const Product: React.FC = () => {
