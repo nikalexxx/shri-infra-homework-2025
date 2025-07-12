@@ -29,11 +29,9 @@ jobs:
           curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
           echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
 
-      - name: 🔐 Аутентификация в Yandex Cloud
+      - name: Authenticate YC CLI
         run: |
-          echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
-          export YC_TOKEN=$(cat key.json | jq -r '.access_token')
-          yc config set token "$YC_TOKEN"
+          yc config set token "${{ secrets.YC_OAUTH_TOKEN }}"
           yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
           yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
 
