@@ -24,6 +24,22 @@ jobs:
           echo "Будем деплоить версию: $VERSION"
           echo "Из реестра: $REGISTRY/$IMAGE_NAME"
 
+      - name: 🧰 Установка Yandex CLI
+        run: |
+          curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
+      - name: 🔐 Аутентификация в Yandex Cloud
+        run: |
+          echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
+          export YC_TOKEN=$(cat key.json | jq -r '.access_token')
+          yc config set token "$YC_TOKEN"
+          yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
+          yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
+
+      - name: 🔗 Конфигурация Docker через yc CLI
+        run: yc container registry configure-docker
+
       - name: ✨ Проверка доступности образа в YCR
         run: |
           echo "Проверяем наличие тега ${VERSION}_latest в YCR..."
