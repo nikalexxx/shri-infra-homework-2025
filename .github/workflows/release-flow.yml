@@ -1,0 +1,131 @@
+name: Release Flow
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0). Defaults to run number.'
+        required: false
+        default: ${{ github.run_number }}
+
+env:
+  YANDEX_REGISTRY_ID: 'crp83o2nv5jjr7il9b35' # Замени на свой идентификатор реестра!
+  YANDEX_CR_SA_KEY_ID: ${{ secrets.YANDEX_CR_SA_KEY_ID }}
+  YANDEX_CR_SA_PRIVATE_KEY: ${{ secrets.YANDEX_CR_SA_PRIVATE_KEY }}
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Нужно для git log, чтобы получить всю историю коммитов
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run Tests
+        run: npm run test
+
+      - name: Get previous release tag
+        id: get_previous_tag
+        run: |
+          # Ищем последний релизный или фикс-релизный тег
+          PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(_fix[0-9]+)?$' | head -n 1)
+          if [ -z "$PREVIOUS_TAG" ]; then
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD) # Если тегов нет, берём первый коммит
+          fi
+          echo "Previous tag: $PREVIOUS_TAG"
+          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create release branch
+        id: create_branch
+        run: |
+          RELEASE_BRANCH="releases/${{ github.event.inputs.version }}"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git branch $RELEASE_BRANCH
+          git push origin $RELEASE_BRANCH
+
+      - name: Login to Yandex Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: cr.yandex
+          username: ${{ env.YANDEX_CR_SA_KEY_ID }}
+          password: ${{ env.YANDEX_CR_SA_PRIVATE_KEY }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t cr.yandex/${{ env.YANDEX_REGISTRY_ID }}/app:${{ github.event.inputs.version }} .
+          docker tag cr.yandex/${{ env.YANDEX_REGISTRY_ID }}/app:${{ github.event.inputs.version }} cr.yandex/${{ env.YANDEX_REGISTRY_ID }}/app:latest
+
+      - name: Push Docker image to Container Registry
+        run: |
+          docker push cr.yandex/${{ env.YANDEX_REGISTRY_ID }}/app:${{ github.event.inputs.version }}
+          docker push cr.yandex/${{ env.YANDEX_REGISTRY_ID }}/app:latest
+
+      - name: Create Git tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -a v${{ github.event.inputs.version }} -m "Release v${{ github.event.inputs.version }}"
+          git push origin v${{ github.event.inputs.version }}
+
+      - name: Generate commit list for CHANGELOG and Issue
+        id: generate_commits
+        run: |
+          COMMITS=$(git log --pretty=format:"* %h - %s (%an)" ${{ steps.get_previous_tag.outputs.previous_tag }}..HEAD)
+          echo "commits_list<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Update CHANGELOG.md
+        run: |
+          {
+            echo "# ${{ github.event.inputs.version }} - $(date +'%Y-%m-%d')"
+            echo ""
+            echo "${{ steps.generate_commits.outputs.commits_list }}"
+            echo ""
+            cat CHANGELOG.md
+          } > CHANGELOG_NEW.md
+          mv CHANGELOG_NEW.md CHANGELOG.md
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add CHANGELOG.md
+          git commit -m "docs: Update CHANGELOG for v${{ github.event.inputs.version }}" || echo "No changes to commit" # Если нет изменений, не падать
+          git push
+
+      - name: Create GitHub Issue
+        uses: octokit/request-action@v2
+        with:
+          route: POST /repos/{owner}/{repo}/issues
+          owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          headers:
+            authorization: token ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            {
+              "title": "Release ${{ github.event.inputs.version }}",
+              "body": "
+                **Дата релиза:** $(date +'%Y-%m-%d %H:%M:%S')
+                **Автор релиза:** ${{ github.actor }}
+                **Версия:** ${{ github.event.inputs.version }}
+
+                **Список коммитов с предыдущего релиза:**
+                ${{ steps.generate_commits.outputs.commits_list }}
+
+                **Ссылка на Docker-образ в Yandex Container Registry:**
+                cr.yandex/${{ env.YANDEX_REGISTRY_ID }}/app:${{ github.event.inputs.version }}
+              "
+            }

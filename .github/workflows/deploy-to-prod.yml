@@ -1,0 +1,81 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to deploy (e.g., 1.0.0 or 1.0.0_fix1)'
+        required: true
+      issue_number:
+        description: 'GitHub Issue number to add comment to'
+        required: true
+
+env:
+  YANDEX_REGISTRY_ID: 'crp83o2nv5jjr7il9b35' # Замени на свой идентификатор реестра!
+  YANDEX_VM_IP: '158.160.161.222' # Замени на публичный IP своей ВМ!
+  YANDEX_VM_USER: 'admin1' # Пользователь на твоей ВМ (например, ubuntu)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code (optional, only for issue comment)
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add Yandex VM to known hosts
+        run: ssh-keyscan -H ${{ env.YANDEX_VM_IP }} >> ~/.ssh/known_hosts
+
+      - name: Login to Yandex Container Registry on VM
+        run: |
+          ssh ${{ env.YANDEX_VM_USER }}@${{ env.YANDEX_VM_IP }} "
+            sudo docker login --username ${{ env.YANDEX_CR_SA_KEY_ID }} --password ${{ secrets.YANDEX_CR_SA_PRIVATE_KEY }} cr.yandex
+          "
+
+      - name: Pull Docker image on VM
+        run: |
+          ssh ${{ env.YANDEX_VM_USER }}@${{ env.YANDEX_VM_IP }} "
+            sudo docker pull cr.yandex/${{ env.YANDEX_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}
+          "
+      - name: Stop and remove old container (if exists)
+        run: |
+          ssh ${{ env.YANDEX_VM_USER }}@${{ env.YANDEX_VM_IP }} "
+            if docker ps -a --format '{{.Names}}' | grep -q 'shri-infra-app'; then
+              echo 'Stopping and removing existing container...'
+              sudo docker stop shri-infra-app || true
+              sudo docker rm shri-infra-app || true
+            else
+              echo 'No existing container found.'
+            fi
+          "
+
+      - name: Run Docker image on VM
+        run: |
+          ssh ${{ env.YANDEX_VM_USER }}@${{ env.YANDEX_VM_IP }} "
+            sudo docker run -d --name shri-infra-app -p 3000:3000 cr.yandex/${{ env.YANDEX_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}
+          "
+
+      - name: Add comment to GitHub Issue about deployment
+        uses: octokit/request-action@v2
+        with:
+          route: POST /repos/{owner}/{repo}/issues/${{ github.event.inputs.issue_number }}/comments
+          owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          headers:
+            authorization: token ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            {
+              "body": "
+                ---
+                **Деплой в прод!**
+
+                **Дата деплоя:** $(date +'%Y-%m-%d %H:%M:%S')
+                **Автор деплоя:** ${{ github.actor }}
+                **Версия приложения:** ${{ github.event.inputs.release_version }}
+              "
+            }
