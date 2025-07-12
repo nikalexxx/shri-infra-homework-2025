@@ -1,0 +1,45 @@
+name: Deploy to Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Docker image tag'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          cat << 'EOF' > ~/.ssh/id_ed25519
+          -----BEGIN OPENSSH PRIVATE KEY-----
+          b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABDAj6mL7m
+          3FFeWoSc8ECs8+AAAAGAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIKbbcCzmfrklVFLc
+          Xtav61drcoYm5dj4YX1pebg9d8QMAAAAoE7TfiVgMVdy9hdNIJU4LLT193v91xcFjAelub
+          AIaPQ6voYlJHAUgM1Qg6KvxK04611RwxOn9mkZ82CWhPXTGpd90clwbxB7lZeA36SeTLB8
+          do3Pf2vMqKhoDDlSJkMtyAWy1wBUOgZrANZ/e9NrK5AvUlIUHiTXvEzr92kcwYWOtBmOFV
+          CMTpHzzizKHhNUh2zvZMFwSYzoA0XZTDc0tk0=
+          -----END OPENSSH PRIVATE KEY-----
+          EOF
+          chmod 600 ~/.ssh/id_ed25519
+          echo "89.169.188.117 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIQCl2QZ..." >> ~/.ssh/known_hosts
+
+      - name: Login to Yandex Registry
+        run: |
+          docker login \
+            -u iam \
+            --password-stdin \
+            cr.yandex <<< "$(yc iam create-token)"
+
+      - name: Deploy Container
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no kir32ill@89.169.188.117 << 'EOF'
+          docker stop sri-app || true
+          docker rm sri-app || true
+          docker pull cr.yandex/crpj0rsfvvem9ps4apgr/sri:${{ github.event.inputs.version }}
+          docker run -d -p 80:80 --name sri-app \
+            cr.yandex/crpj0rsfvvem9ps4apgr/sri:${{ github.event.inputs.version }}
+          EOF
