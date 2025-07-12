@@ -1,12 +1,24 @@
 name: Run test and lint
 
 on:
+  # Ручной запуск через интерфейс GitHub
   workflow_dispatch:
     inputs:
       branch:
         type: string
         description: 'Branch to run CI on'
         default: main
+
+  # Возможность вызова из другого workflow'а
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: '22'
+      branch:
+        type: string
+        default: main
+        description: 'Branch to checkout'
 
 jobs:
   lint-and-test:
