@@ -65,9 +65,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-            ISSUE_NUMBER=$(gh issue list --state open --json number,title | jq -r '.[] | select(.title | contains("Release v${{ github.event.inputs.version }}")) | .number')
+            ISSUE_NUMBER=$(gh issue list --state open --json number,title | jq -r '.[] | select(.title | contains("Release v${{ github.event.inputs.release_version }}")) | .number')
             if [ -z "$ISSUE_NUMBER" ]; then
-              echo "Issue для версии ${{ github.event.inputs.version }} не найдено"
+              echo "Issue для версии ${{ github.event.inputs.release_version }} не найдено"
               exit 1
             fi
             COMMENT="🚀 **Deployed to production**\n\n"\
