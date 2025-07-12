@@ -1,43 +1,76 @@
 name: Deploy to Prod
 
 on:
-    workflow_dispatch:
-        inputs:
-            version:
-                description: "Версия образа"
-                required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия образа"
+        required: true
 
 jobs:
-    deploy:
-        runs-on: ubuntu-latest
-        env:
-            REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
-            VERSION: ${{ github.event.inputs.version }}
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+      VERSION: ${{ github.event.inputs.version }}
 
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            - name: Login to Yandex Container Registry
-              run: |
-                  echo "${{ secrets.YC_SERVICE_KEY }}" > key.json
-                  echo "=== Содержимое key.json ==="
-                  cat key.json
-                  ACCESS_TOKEN=$(jq -r .access_token key.json)
-                  echo "=== Полученный access_token ==="
-                  echo "$ACCESS_TOKEN"
-                  echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
+      - name: Save YC_SERVICE_KEY to file and show info
+        run: |
+          echo "=== Step: Save YC_SERVICE_KEY to key.json ==="
+          printf '%s' "${{ secrets.YC_SERVICE_KEY }}" > key.json
+          echo "=== Content of key.json ==="
+          cat key.json
+          echo "=== Validating JSON format with jq ==="
+          jq . key.json
+          echo "=== Extracting access_token ==="
+          ACCESS_TOKEN=$(jq -r .access_token key.json)
+          echo "Access token extracted (hidden for security)"
+          # Не выводим сам токен в лог, чтобы не сливать секрет
 
-            - name: Pull and deploy image on server
-              uses: appleboy/ssh-action@v0.1.7
-              with:
-                  host: ${{ secrets.VM_IP }}
-                  username: ${{ secrets.VM_SSH_USER }}
-                  key: ${{ secrets.VM_SSH_KEY }}
-                  script: |
-                      echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
-                      cat key.json | jq -r .access_token | docker login --username oauth --password-stdin cr.yandex
-                      docker stop app || true
-                      docker rm app || true
-                      docker pull $REGISTRY:${VERSION}_latest
-                      docker run -d --name app -p 80:3000 $REGISTRY:${VERSION}_latest
+      - name: Login to Yandex Container Registry
+        run: |
+          echo "=== Step: Logging in to Yandex Container Registry ==="
+          ACCESS_TOKEN=$(jq -r .access_token key.json)
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "Error: access_token is empty!"
+            exit 1
+          fi
+          echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
+          echo "Docker login successful"
+
+      - name: Deploy on remote server via SSH
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ${{ secrets.VM_SSH_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            echo "=== Step: Save YC_SERVICE_KEY to key.json on server ==="
+            printf '%s' '${{ secrets.YC_SERVICE_KEY }}' > key.json
+            echo "=== Content of key.json on server ==="
+            cat key.json
+            echo "=== Validate JSON on server ==="
+            jq . key.json || { echo "jq failed on server"; exit 1; }
+            ACCESS_TOKEN=$(jq -r .access_token key.json)
+            if [ -z "$ACCESS_TOKEN" ]; then
+              echo "Error: access_token is empty on server!"
+              exit 1
+            fi
+            echo "=== Logging in to Yandex Container Registry on server ==="
+            echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
+            echo "Docker login on server successful"
+
+            echo "=== Stopping and removing old container (if any) ==="
+            docker stop app || echo "No running container to stop"
+            docker rm app || echo "No container to remove"
+
+            echo "=== Pulling image $REGISTRY:${VERSION}_latest ==="
+            docker pull $REGISTRY:${VERSION}_latest
+
+            echo "=== Running container app ==="
+            docker run -d --name app -p 80:3000 $REGISTRY:${VERSION}_latest
+            echo "Container started successfully"
