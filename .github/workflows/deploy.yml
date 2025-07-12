@@ -15,9 +15,9 @@ jobs:
     steps:
       - name: Check image exists
         env:
-          YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+          YC_OAUTH_TOKEN: ${{ secrets.YC_OAUTH_TOKEN }}
         run: |
-          echo "$YC_SA_KEY" | docker login \
+          echo "$YC_OAUTH_TOKEN" | docker login \
             --username oauth \
             --password-stdin \
             cr.yandex
@@ -43,7 +43,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
-            echo "${{ secrets.YC_SA_KEY }}" | docker login \
+            echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login \
               --username oauth \
               --password-stdin \
               cr.yandex
