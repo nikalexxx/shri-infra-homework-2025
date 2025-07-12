@@ -78,6 +78,7 @@ jobs:
         run: |
           BODY=$(cat <<EOF
           **Дата:** $(date)
+          **Автор:** ${{ github.actor }}
           **Версия:** ${{ env.VERSION }}
           **Коммиты:**
           ${{ steps.changelog.outputs.COMMITS }}
