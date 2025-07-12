@@ -5,44 +5,58 @@ on:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest  
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          node-version: '16'
-      
+          node-version: '18'
+
+      - name: Install Yandex Cloud CLI (PowerShell)
+        shell: pwsh
+        run: |
+          iex (New-Object System.Net.WebClient).DownloadString('https://storage.yandexcloud.net/yandexcloud-yc/install.ps1')
+          $env:PATH += ";$env:USERPROFILE\yandex-cloud\bin"
+          yc --version
+          echo "::add-path::$env:USERPROFILE\yandex-cloud\bin"
+
       - name: Run lint and tests
         run: |
           npm ci
           npm run lint
           npm run test
-        
+
       - name: Login to Yandex Container Registry
+        shell: pwsh
         run: |
           echo "${{ secrets.YC_SA_KEY }}" > key.json
           yc config set service-account-key key.json
           yc container registry configure-docker
-        
+          Remove-Item key.json -Force
+
       - name: Create release branch
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git checkout -b releases/${{ github.run_number }}
           git push origin releases/${{ github.run_number }}
-        
+
       - name: Build and push Docker image
+        shell: pwsh
         run: |
           docker build -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }} .
           docker tag cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }} cr.yandex/${{ secrets.REGISTRY_ID }}/app:latest
           docker push cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }}
           docker push cr.yandex/${{ secrets.REGISTRY_ID }}/app:latest
-        
+
       - name: Create tag
         run: |
           git tag v${{ github.run_number }}
           git push origin v${{ github.run_number }}
-        
+
       - name: Create release issue
         run: |
           gh issue create --title "Release v${{ github.run_number }}" --body "Release details..."
