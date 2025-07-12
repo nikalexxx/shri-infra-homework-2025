@@ -146,7 +146,7 @@ jobs:
             ${commits}
 
             **Docker образ:**
-            cr.yandex/${process.env.REGISTRY}/${process.env.IMAGE_NAME}:${version}
+            ${process.env.REGISTRY}/${process.env.IMAGE_NAME}:${version}
             `;
 
             await github.rest.issues.create({
@@ -163,3 +163,4 @@ jobs:
           git config user.email "actions@github.com"
           git commit -am "docs: update changelog for release $VERSION"
           git push origin HEAD:releases/$VERSION
+          git push origin HEAD:main
