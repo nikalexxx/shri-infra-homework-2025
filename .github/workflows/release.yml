@@ -82,7 +82,7 @@ jobs:
           **Коммиты:**
           ${{ steps.changelog.outputs.COMMITS }}
           
-          **Образ:** `cr.yandex/${{ secrets.YC_REGISTRY }}/app:${{ env.VERSION }}`
+          **Образ:** \`cr.yandex/${{ secrets.YC_REGISTRY }}/app:${{ env.VERSION }}\`
           EOF
           )
           gh issue create \
