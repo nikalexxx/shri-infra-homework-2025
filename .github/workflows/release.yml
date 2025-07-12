@@ -15,27 +15,33 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq docker.io
+
       - name: Install Yandex Cloud CLI
         run: |
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
           echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
           export PATH="$HOME/yandex-cloud/bin:$PATH"
-          $HOME/yandex-cloud/bin/yc --version
-
-      - name: Verify installation
-        run: |
-          echo "Current PATH: $PATH"
-          which yc
           yc --version
 
       - name: Configure YC CLI
         run: |
-          echo "${{ secrets.YC_SA_KEY }}" > key.json
+          cat <<EOF > key.json
+          ${{ secrets.YC_SA_KEY }}
+          EOF
+
+          jq . key.json || (echo "Invalid JSON format!"; exit 1)
+                  
           yc config set service-account-key key.json
           yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
           yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
           yc container registry configure-docker
           rm -f key.json
+
+          yc iam cloud list
 
       - name: Run lint and tests
         run: |
