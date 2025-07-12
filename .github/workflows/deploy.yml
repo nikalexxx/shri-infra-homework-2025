@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Версия для деплоя (12, 12_fix1 …)"
+        description: "Версия для деплоя (1, 2, 13 …)"
         required: true
 
 jobs:
