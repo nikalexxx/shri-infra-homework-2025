@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.run_number }}
-      REGISTRY: ${{ env.REGISTRY }}
+      REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
     steps:
       - uses: actions/checkout@v4
 
