@@ -2,32 +2,34 @@ name: deploy
 on:
   workflow_dispatch:
     inputs:
-      version: { description: "Версия для деплоя (12, 12_fix1 …)", required: true }
-
-env:
-  IMAGE: cr.yandex/${{ secrets.YC_REGISTRY }}/app:${{ inputs.version }}_latest
+      version:
+        description: "Версия для деплоя (12, 12_fix1 …)"
+        required: true
 
 jobs:
   prod:
     runs-on: ubuntu-latest
+    env:
+      IMAGE: cr.yandex/${{ secrets.YC_REGISTRY }}/app:${{ inputs.version }}_latest
     steps:
       - name: Проверяем, что образ существует
-        run: docker manifest inspect $IMAGE > /dev/null
+        run: docker manifest inspect "$IMAGE" > /dev/null
 
       - name: Деплой на ВМ
         uses: appleboy/ssh-action@v1
         with:
-          host:   ${{ secrets.VM_HOST }}
+          host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            docker login cr.yandex -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }}
+            docker login cr.yandex -u oauth -p '${{ secrets.YC_OAUTH_TOKEN }}'
             docker pull $IMAGE
             docker stop app || true && docker rm app || true
             docker run -d --name app -p 80:3000 $IMAGE
 
       - name: Comment issue
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           gh issue comment --search "Release ${{ inputs.version }}" \
-            --body "**🚀 Прод**: выкатил $(date)\nобраз \`${IMAGE}\`"
-        env: { GH_TOKEN: ${{ secrets.GH_TOKEN }} }
+            --body "**🚀 Прод**: выкатил $(date)\nобраз \`$IMAGE\`"
