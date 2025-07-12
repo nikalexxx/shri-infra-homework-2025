@@ -58,16 +58,12 @@ jobs:
 
       - name: Build Docker image locally
         run: |
-          docker build -t app .
-
-      - name: Build Docker image locally
-        run: |
             docker build -t $IMAGE_NAME .
 
-      - name: Tag Docker image with full registry path
-        run: |
-            docker tag $REGISTRY/$IMAGE_NAME:${VERSION}
-            docker tag $REGISTRY/$IMAGE_NAME:${VERSION}_latest
+    #   - name: Tag Docker image with full registry path
+    #     run: |
+    #         docker tag $REGISTRY/$IMAGE_NAME:${VERSION}
+    #         docker tag $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
       - name: Push Docker images to Yandex Container Registry
         run: |
