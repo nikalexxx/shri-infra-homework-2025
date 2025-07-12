@@ -52,6 +52,12 @@ jobs:
             cat CHANGELOG.md
           } > CHANGELOG.md.tmp
           mv CHANGELOG.md.tmp CHANGELOG.md
+          if ! git diff --quiet CHANGELOG.md; then
+            git add CHANGELOG.md
+            git commit -m "chore: changelog for ${VERSION}"
+            git push
+          fi
+
           echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
           echo "${COMMITS}"        >> $GITHUB_OUTPUT
           echo "EOF"               >> $GITHUB_OUTPUT
@@ -59,7 +65,15 @@ jobs:
         run: |
           gh issue create \
             --title "Release ${VERSION}" \
-            --body "**Дата:** $(date)\n**Версия:** ${VERSION}\n**Коммиты:**\n${{ steps.changelog.outputs.COMMITS }}\n\nОбраз: \`${IMAGE}:${VERSION}\`" \
-            --label release
+            --body "$(cat <<EOF
+      **Дата:** $(date)
+      **Версия:** ${VERSION}
+      **Коммиты:**
+      ${{ steps.changelog.outputs.COMMITS }}
+
+      **Образ:** \`${IMAGE}:${VERSION}\`
+      EOF
+      )" \
+      --label release
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
