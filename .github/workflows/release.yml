@@ -1,85 +1,85 @@
 name: Release
 
 on:
-  workflow_dispatch:
+    workflow_dispatch:
 
 permissions:
-  contents: write
-  issues: write
+    contents: write
+    issues: write
 
 env:
-  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+    REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    env:
-      VERSION: ${{ github.run_number }}
-      REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run linter
-        run: npm run lint
-
-      - name: Run tests
-        run: npm test
-
-      - name: Create release branch
-        run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "ci@example.com"
-          git checkout -b releases/${VERSION}
-          git push origin releases/${VERSION}
-
-      - name: Install and configure yc CLI and login to Yandex Container Registry
-        run: |
-          echo "=== Сохраняем сервисный ключ в key.json ==="
-          echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
-
-          echo "=== Получаем OAuth токен через Docker образ yc CLI ==="
-          ACCESS_TOKEN=$(docker run --rm -v $PWD/key.json:/root/.config/yandex-cloud/service-account-key.json:ro yandex/cloud-cli iam create-token --format json | jq -r .iam_token)
-
-          echo "=== Токен получен (скрыт) ==="
-
-          echo "=== Логинимся в Yandex Container Registry ==="
-          echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
-
-      - name: Build Docker image
-        run: docker build -t $REGISTRY:${VERSION} -t $REGISTRY:${VERSION}_latest .
-
-      - name: Push Docker images
-        run: |
-          docker push $REGISTRY:${VERSION}
-          docker push $REGISTRY:${VERSION}_latest
-
-      - name: Create git tag
-        run: |
-          git tag ${VERSION}
-          git push origin ${VERSION}
-
-      - name: Generate commit list
-        id: changelog
-        run: |
-          git fetch --tags
-          PREV=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | head -n1)
-          git log $PREV..HEAD --oneline > commits.txt
-          echo "COMMITS<<EOF" >> $GITHUB_ENV
-          cat commits.txt >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      - name: Create GitHub Issue for release
+    release:
+        runs-on: ubuntu-latest
         env:
-          COMMITS: ${{ env.COMMITS }}
-        run: |
-          gh issue create \
-            --title "Release $VERSION" \
-            --body "**Дата:** $(date)\n**Автор:** ${{ github.actor }}\n**Версия:** $VERSION\n\n**Коммиты:**\n${COMMITS}\n\nDocker: $REGISTRY:$VERSION"
+            VERSION: ${{ github.run_number }}
+            REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 18
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Run linter
+              run: npm run lint
+
+            - name: Run tests
+              run: npm test
+
+            - name: Create release branch
+              run: |
+                  git config user.name "${{ github.actor }}"
+                  git config user.email "ci@example.com"
+                  git checkout -b releases/${VERSION}
+                  git push origin releases/${VERSION}
+
+            - name: Install and configure yc CLI and login to Yandex Container Registry
+              run: |
+                  echo "=== Сохраняем сервисный ключ в key.json ==="
+                  echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
+
+                  echo "=== Получаем OAuth токен через Docker образ yc CLI ==="
+                  ACCESS_TOKEN=$(docker run --rm -v $PWD/key.json:/root/.config/yandex-cloud/service-account-key.json:ro cr.yandex/cloud/yc iam create-token --format json | jq -r .iam_token)
+
+                  echo "=== Токен получен (скрыт) ==="
+
+                  echo "=== Логинимся в Yandex Container Registry ==="
+                  echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
+
+            - name: Build Docker image
+              run: docker build -t $REGISTRY:${VERSION} -t $REGISTRY:${VERSION}_latest .
+
+            - name: Push Docker images
+              run: |
+                  docker push $REGISTRY:${VERSION}
+                  docker push $REGISTRY:${VERSION}_latest
+
+            - name: Create git tag
+              run: |
+                  git tag ${VERSION}
+                  git push origin ${VERSION}
+
+            - name: Generate commit list
+              id: changelog
+              run: |
+                  git fetch --tags
+                  PREV=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | head -n1)
+                  git log $PREV..HEAD --oneline > commits.txt
+                  echo "COMMITS<<EOF" >> $GITHUB_ENV
+                  cat commits.txt >> $GITHUB_ENV
+                  echo "EOF" >> $GITHUB_ENV
+
+            - name: Create GitHub Issue for release
+              env:
+                  COMMITS: ${{ env.COMMITS }}
+              run: |
+                  gh issue create \
+                    --title "Release $VERSION" \
+                    --body "**Дата:** $(date)\n**Автор:** ${{ github.actor }}\n**Версия:** $VERSION\n\n**Коммиты:**\n${COMMITS}\n\nDocker: $REGISTRY:$VERSION"
