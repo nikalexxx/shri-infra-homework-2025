@@ -77,18 +77,18 @@ jobs:
                     -q '.[0].number')
 
           if [ -n "$ISSUE" ]; then
-            BODY="$(cat <<EOF
-            **⚙️ Фикс:** $(date)
-            **Автор фикса:** ${{ github.actor }}
-            
-            **Тег:** \`${VERSION}_fix${FIXNUM}\`
-            **Образ:** \`$IMAGE\`
-            
-            **Коммиты с ${{ steps.commits.outputs.prev_tag }}:**
-            ${{ steps.commits.outputs.list }}
-            EOF
-            )"
-            gh issue comment "$ISSUE" --repo "$REPO" --body "$BODY"
+          BODY="$(cat <<EOF
+          **⚙️ Фикс:** $(date)
+          **Автор фикса:** ${{ github.actor }}
+          
+          **Тег:** \`${VERSION}_fix${FIXNUM}\`
+          **Образ:** \`$IMAGE\`
+          
+          **Коммиты с ${{ steps.commits.outputs.prev_tag }}:**
+          ${{ steps.commits.outputs.list }}
+          EOF
+          )"
+          gh issue comment "$ISSUE" --repo "$REPO" --body "$BODY"
           else
-            echo "⚠️  Issue 'Release $VERSION' не найдена — комментарий не добавлен."
+          echo "⚠️  Issue 'Release $VERSION' не найдена — комментарий не добавлен."
           fi
