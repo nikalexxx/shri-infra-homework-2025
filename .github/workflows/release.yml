@@ -41,20 +41,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 --match "v*" || echo "")
-          CURRENT_TAG="v${VERSION}"
-          echo "Previous tag: $PREV_TAG"
-          echo "Current tag: $CURRENT_TAG"
-          
-          # Получаем коммиты и сохраняем в файл
-          if [ -n "$PREV_TAG" ]; then
-            git log $PREV_TAG..HEAD --pretty=format:"- %s (%an)" > commits.txt
-          else
-            git log HEAD --pretty=format:"- %s (%an)" > commits.txt
-          fi
-          
-          # Читаем коммиты из файла
-          COMMITS=$(cat commits.txt)
-          
+          CURRENT_TAG="v${VERSION}"          
           # Обновляем CHANGELOG
           echo -e "## v${VERSION} — $(date +'%Y-%m-%d')\n$COMMITS\n\n$(cat CHANGELOG.md 2>/dev/null)" > CHANGELOG.md
           git config user.name "github-actions"
@@ -71,7 +58,4 @@ jobs:
           **Версия:** v${VERSION}  
           **Docker-образ:** cr.yandex/${{ secrets.YA_REGISTRY_ID }}/app:${VERSION}  
           **Коммиты:**  
-          $(cat commits.txt)"
-          
-          # Удаляем временный файл
-          rm commits.txt
+          $(git log --pretty=format:'- %s (%an)' v${VERSION}..HEAD)
