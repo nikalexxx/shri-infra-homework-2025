@@ -9,7 +9,8 @@ permissions:
 
 env:
   REGISTRY_URL: cr.yandex.ru
-  REGISTRY: cr.yandex.ru/${{ secrets.YC_REGISTRY_ID }}/app
+  IMAGE_NAME: app
+  REGISTRY: cr.yandex.ru/${{ secrets.YC_REGISTRY_ID }}
 
 jobs:
   release:
@@ -59,15 +60,19 @@ jobs:
         run: |
           docker build -t app .
 
+      - name: Build Docker image locally
+        run: |
+            docker build -t $IMAGE_NAME .
+
       - name: Tag Docker image with full registry path
         run: |
-          docker tag app $REGISTRY:${VERSION}
-          docker tag app $REGISTRY:${VERSION}_latest
+            docker tag $IMAGE_NAME $REGISTRY/$IMAGE_NAME:${VERSION}
+            docker tag $IMAGE_NAME $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
       - name: Push Docker images to Yandex Container Registry
         run: |
-          docker push $REGISTRY:${VERSION}
-          docker push $REGISTRY:${VERSION}_latest
+            docker push $REGISTRY/$IMAGE_NAME:${VERSION}
+            docker push $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
       - name: Create git tag
         run: |
