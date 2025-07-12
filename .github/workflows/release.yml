@@ -12,7 +12,6 @@ env:
   REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
   IMAGE_NAME: app
   REGISTRY_IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
-
 jobs:
   release:
     runs-on: ubuntu-latest
