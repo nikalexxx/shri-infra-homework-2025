@@ -1,48 +1,39 @@
-name: CI/CD Deploy to Prod
+name: Deploy to Prod
 
 on:
-    workflow_dispatch:
-        inputs:
-            version:
-                description: "Версия образа"
-                required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия образа"
+        required: true
 
 jobs:
-    build-and-deploy:
-        runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+      VERSION: ${{ github.event.inputs.version }}
 
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            - name: Build Docker image
-              run: docker build -t app .
+      - name: Login to Yandex Container Registry
+        run: |
+          echo "${{ secrets.YC_SERVICE_KEY }}" > key.json
+          docker login --username oauth --password-stdin cr.yandex <<< "$(cat key.json | jq -r .access_token)"
 
-            - name: Save Docker image to tar.gz
-              run: docker save app | gzip > app.tar.gz
-
-            - name: Copy Docker image archive to server
-              uses: appleboy/scp-action@v0.1.5
-              with:
-                  host: ${{ secrets.VM_IP }}
-                  username: ${{ secrets.VM_SSH_USER }}
-                  key: ${{ secrets.VM_SSH_KEY }}
-                  source: "app.tar.gz"
-                  target: "/tmp/app.tar.gz"
-                  rm: false
-                  strip_components: 0
-
-            - name: Deploy and run Docker container on server
-              uses: appleboy/ssh-action@v0.1.7
-              with:
-                  host: ${{ secrets.VM_IP }}
-                  username: ${{ secrets.VM_SSH_USER }}
-                  key: ${{ secrets.VM_SSH_KEY }}
-                  script: |
-                      docker stop app || true
-                      docker rm app || true
-                      docker rmi app:latest || true
-                      rm -rf /tmp/app.tar.gz
-                      gunzip -c /tmp/app.tar.gz | docker load
-                      docker run -d --name app -p 80:3000 app:latest
-                      rm -rf /tmp/app.tar.gz
+      - name: Pull and deploy image on server
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ${{ secrets.VM_SSH_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
+            ACCESS_TOKEN=$(cat key.json | jq -r .access_token)
+            docker login --username oauth --password "$ACCESS_TOKEN" cr.yandex
+            docker stop app || true
+            docker rm app || true
+            docker pull $REGISTRY:${VERSION}_latest
+            docker run -d --name app -p 80:3000 $REGISTRY:${VERSION}_latest
