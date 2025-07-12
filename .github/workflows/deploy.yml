@@ -1,0 +1,86 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to deploy'
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Yandex Cloud Container Registry
+        uses: yandex-cloud/github-actions/login-cr@main
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+
+      - name: Check if image exists
+        id: check-image
+        run: |
+          docker pull cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest || { echo "::error::Image not found"; exit 1; }
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            # Pull the latest image
+            docker login --username oauth --password ${{ secrets.YC_TOKEN }} cr.yandex
+            docker pull cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
+            
+            # Stop and remove the old container if it exists
+            docker stop app-container || true
+            docker rm app-container || true
+            
+            # Run the new container
+            docker run -d --name app-container -p 3000:3000 cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
+
+      - name: Find release issue
+        id: find-issue
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+            });
+            
+            const releaseIssue = issues.find(issue => issue.title === `Release v${{ github.event.inputs.release_version }}`);
+            if (releaseIssue) {
+              return releaseIssue.number;
+            }
+            return null;
+          result-encoding: string
+
+      - name: Add deployment comment to release issue
+        if: steps.find-issue.outputs.result != 'null'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issueNumber = ${{ steps.find-issue.outputs.result }};
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `## Deployed to Production
+
+            **Date:** ${new Date().toISOString().split('T')[0]}
+            **Deployed by:** @${{ github.actor }}
+            **Version:** ${{ github.event.inputs.release_version }}
+            `
+            }); 
