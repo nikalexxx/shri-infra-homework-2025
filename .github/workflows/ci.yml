@@ -3,21 +3,21 @@ name: CI Pipeline
 on:
   pull_request:
     branches:
-      - main  # или твоя основная ветка, например master
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        type: string
+        description: 'Branch to run CI on'
+        default: main
 
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    workflow_dispatch:
-      inputs:
-        branch:
-          type: string
-          description: 'Branch to run CI on'
-          default: main
 
     strategy:
       matrix:
-        node-version: 22
+        node-version: [22]
 
     steps:
       - name: Checkout code
