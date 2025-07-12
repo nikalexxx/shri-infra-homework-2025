@@ -66,7 +66,7 @@ jobs:
         uses: peter-evans/create-issue-from-file@v5
         with:
           title: "Release $VERSION"
-          content-file: .github/.release-issue.md
+          content-filepath: .github/.release-issue.md
           labels: release
 
       - name: Update CHANGELOG.md
