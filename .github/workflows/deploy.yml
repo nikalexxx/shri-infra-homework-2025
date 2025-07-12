@@ -47,9 +47,15 @@ jobs:
                     -q '.[0].number')
 
           if [ -n "$ISSUE" ]; then
+            BODY=$(cat 
+              <<EOF
+                **🚀 Выкат в прод**: $(date)
+                **Автор:** ${{ github.actor }}
+              EOF
+            )
             gh issue comment "$ISSUE" \
               --repo "$REPO" \
-              --body "**🚀 Выкат в прод**: $(date)\n**Автор:** ${{ github.actor }}"
+              --body "$BODY"
           else
             echo "⚠️  Issue 'Deploy $VERSION' не найден."
           fi
