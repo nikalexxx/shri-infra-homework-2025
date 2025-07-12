@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Базовая версия релиза (например 12)"
+        description: "Базовая версия релиза (1, 2, 13 …)"
         required: true
 
 jobs:
@@ -80,11 +80,9 @@ jobs:
           BODY="$(cat <<EOF
           **⚙️ Фикс:** $(date)
           **Автор фикса:** ${{ github.actor }}
-          
           **Тег:** \`${VERSION}_fix${FIXNUM}\`
           **Образ:** \`$IMAGE\`
-          
-          **Коммиты с ${{ steps.commits.outputs.prev_tag }}:**
+          **Коммиты:**
           ${{ steps.commits.outputs.list }}
           EOF
           )"
