@@ -57,5 +57,7 @@ jobs:
           **Автор:** @${{ github.actor }} 
           **Версия:** v${VERSION}  
           **Docker-образ:** cr.yandex/${{ secrets.YA_REGISTRY_ID }}/app:${VERSION}  
+          
           **Коммиты:**  
           $(git log --pretty=format:'- %s (%an)' v${VERSION}..HEAD)
+          "
