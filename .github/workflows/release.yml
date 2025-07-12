@@ -28,9 +28,12 @@ jobs:
           echo "VERSION=$VER" >>"$GITHUB_ENV"
 
       - name: create release branch
-        if: github.event_name == 'workflow_dispatch'
         run: |
-          git switch -c releases/${VERSION}
+          if git show-ref --quiet refs/heads/releases/${VERSION}; then
+            git switch releases/${VERSION}
+          else
+            git switch -c releases/${VERSION}
+          fi
           git push -u origin HEAD
 
       - name: set git identity
@@ -77,7 +80,7 @@ jobs:
           if ! git diff --quiet CHANGELOG.md; then
             git add CHANGELOG.md
             git commit -m "chore: changelog for ${VERSION}"
-            git push
+            git push origin HEAD
           fi
 
           echo "COMMITS<<EOF" >> "$GITHUB_OUTPUT"
