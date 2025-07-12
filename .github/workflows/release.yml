@@ -1,0 +1,75 @@
+name: start release flow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Release build and publish
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        node-version: [20.x]
+        os: [ubuntu-latest]
+    env:
+      REGISTRY: cr.yandex/cn1o5o99o1acodve6tud
+      IMAGE_NAME: app
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Get release version
+        id: version
+        run: echo "RELEASE_VERSION=${{ github.run_number }}" >> $GITHUB_ENV
+
+      - name: Login to Yandex Cloud Container Registry
+        run: echo ${{ secrets.Y_CR_TOKEN }} | docker login --username oauth --password-stdin cr.yandex
+
+      - name: Build Docker image
+        run: |
+          docker build -t $REGISTRY/$IMAGE_NAME:${{ env.RELEASE_VERSION }} .
+          docker tag $REGISTRY/$IMAGE_NAME:${{ env.RELEASE_VERSION }} $REGISTRY/$IMAGE_NAME:${{ env.RELEASE_VERSION }}_latest
+
+      - name: Push Docker images
+        run: |
+          docker push $REGISTRY/$IMAGE_NAME:${{ env.RELEASE_VERSION }}
+          docker push $REGISTRY/$IMAGE_NAME:${{ env.RELEASE_VERSION }}_latest
+
+      - name: Create release branch
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git checkout -b releases/${{ env.RELEASE_VERSION }}
+          git push origin releases/${{ env.RELEASE_VERSION }}
+
+      - name: Create Git tag
+        run: |
+          git tag v${{ env.RELEASE_VERSION }}
+          git push origin v${{ env.RELEASE_VERSION }}
+
+      - name: Update CHANGELOG.md
+        run: |
+          echo "## v${{ env.RELEASE_VERSION }} - $(date +'%Y-%m-%d')" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "Update CHANGELOG for v${{ env.RELEASE_VERSION }}"
+          git push origin HEAD:releases/${{ env.RELEASE_VERSION }}
+
+      - name: Create GitHub Issue
+        uses: peter-evans/create-issue-from-file@v4
+        with:
+          title: "Release ${{ env.RELEASE_VERSION }}"
+          content-filepath: ./Issue_release.md
