@@ -41,15 +41,17 @@ jobs:
                   yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
                   yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
 
+            - name: Tag Docker image with full registry path
+              run: |
+                  docker tag $IMAGE_NAME:${VERSION}_latest $REGISTRY:$VERSION
+                  docker tag $IMAGE_NAME:${VERSION}_latest $REGISTRY:${VERSION}_latest
+                  docker tag $REGISTRY:${VERSION}_fix${FIX} $REGISTRY:${VERSION}_fix${FIX}
+
             - name: Push Docker images to Yandex Container Registry
               run: |
-                  docker push cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}
-                  docker push cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}_latest
-
-            - name: Tag Docker image with full registry path (без .ru!)
-              run: |
-                  docker tag $IMAGE_NAME cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}
-                  docker tag $IMAGE_NAME cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}_latest
+                  docker push $REGISTRY:$VERSION
+                  docker push $REGISTRY:${VERSION}_latest
+                  docker push $REGISTRY:${VERSION}_fix${FIX}
 
             - name: Append to issue
               run: |
