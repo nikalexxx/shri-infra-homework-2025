@@ -8,9 +8,10 @@ permissions:
   issues: write
 
 env:
-  REGISTRY_URL: cr.yandex.ru
+  REGISTRY_URL: cr.yandex.ru        # для аутентификации и credential helper
+  REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
   IMAGE_NAME: app
-  REGISTRY: cr.yandex.ru/${{ secrets.YC_REGISTRY_ID }}
+  REGISTRY_IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
 
 jobs:
   release:
@@ -20,17 +21,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate IAM token from refresh token
-        id: yc-auth
+      - name: Install Yandex Cloud CLI
         run: |
-          RESPONSE=$(curl -s -X POST https://iam.api.cloud.yandex.net/iam/v1/tokens \
-            -H "Content-Type: application/json" \
-            -d "{\"yandexPassportOauthToken\":\"${{ secrets.YC_REFRESH_TOKEN }}\"}")
-          echo "IAM_TOKEN=$(echo $RESPONSE | jq -r '.iamToken')" >> $GITHUB_ENV
+          curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
 
-      - name: Docker login to Yandex Container Registry
+      - name: Authenticate YC CLI
         run: |
-          echo "${{ env.IAM_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex.ru
+          yc config set token "${{ secrets.YC_OAUTH_TOKEN }}"
+          yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
+          yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
+
+      - name: Configure Docker to use Yandex credential helper
+        run: |
+          yc container registry configure-docker --registry ${{ env.REGISTRY_URL }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -50,27 +54,27 @@ jobs:
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "ci@example.com"
-          git checkout -b releases/${VERSION}
-          git push origin releases/${VERSION}
+          git checkout -b releases/${{ env.VERSION }}
+          git push origin releases/${{ env.VERSION }}
 
-      - name: Build Docker image
+      - name: Build Docker image locally
         run: |
           docker build -t $IMAGE_NAME .
 
-      - name: Tag Docker image
+      - name: Tag Docker image with full registry path (без .ru!)
         run: |
-          docker tag $IMAGE_NAME $REGISTRY/$IMAGE_NAME:${VERSION}
-          docker tag $IMAGE_NAME $REGISTRY/$IMAGE_NAME:${VERSION}_latest
+          docker tag $IMAGE_NAME cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}
+          docker tag $IMAGE_NAME cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}_latest
 
-      - name: Push Docker image
+      - name: Push Docker images to Yandex Container Registry
         run: |
-          docker push $REGISTRY/$IMAGE_NAME:${VERSION}
-          docker push $REGISTRY/$IMAGE_NAME:${VERSION}_latest
+          docker push cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}
+          docker push cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}_latest
 
       - name: Create git tag
         run: |
-          git tag ${VERSION}
-          git push origin ${VERSION}
+          git tag ${{ env.VERSION }}
+          git push origin ${{ env.VERSION }}
 
       - name: Generate commit list
         id: changelog
@@ -87,5 +91,5 @@ jobs:
           COMMITS: ${{ env.COMMITS }}
         run: |
           gh issue create \
-            --title "Release $VERSION" \
-            --body "**Дата:** $(date)\n**Автор:** ${{ github.actor }}\n**Версия:** $VERSION\n\n**Коммиты:**\n${COMMITS}\n\nDocker: $REGISTRY/$IMAGE_NAME:$VERSION"
+            --title "Release ${{ env.VERSION }}" \
+            --body "**Дата:** $(date)\n**Автор:** ${{ github.actor }}\n**Версия:** ${{ env.VERSION }}\n\n**Коммиты:**\n${COMMITS}\n\nDocker: cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}"
