@@ -10,7 +10,7 @@ permissions:
 env:
   REGISTRY_URL: cr.yandex.ru
   IMAGE_NAME: app
-  REGISTRY: cr.yandex.ru/${{ secrets.YC_REGISTRY_ID }}
+  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
 
 jobs:
   release:
@@ -66,8 +66,8 @@ jobs:
 
       - name: Tag Docker image with full registry path
         run: |
-            docker tag $IMAGE_NAME $REGISTRY/$IMAGE_NAME:${VERSION}
-            docker tag $IMAGE_NAME $REGISTRY/$IMAGE_NAME:${VERSION}_latest
+            docker tag $REGISTRY/$IMAGE_NAME:${VERSION}
+            docker tag $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
       - name: Push Docker images to Yandex Container Registry
         run: |
