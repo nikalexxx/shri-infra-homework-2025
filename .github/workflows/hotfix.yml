@@ -70,9 +70,10 @@ jobs:
       - name: Determine last tag in release
         id: find_prev
         run: |
-          PREV=$(git tag --contains HEAD --list "v${RELEASE_VERSION}*" | sort -V | tail -n 1)
+          PREV=$(git tag --list "v${RELEASE_VERSION}*" --sort=-v:refname | head -n 1)
+          
           if [ -z "$PREV" ]; then
-            PREV="v${RELEASE_VERSION}"  # Основной релизный тег
+            PREV="v${RELEASE_VERSION}"
           fi
           echo "previous_tag=$PREV" >> $GITHUB_OUTPUT
           echo "Previous tag: $PREV"
