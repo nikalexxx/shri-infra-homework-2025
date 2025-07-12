@@ -61,20 +61,22 @@ jobs:
       - name: Set release version
         run: echo "VERSION=$(cat version.txt)" >> $GITHUB_ENV
 
-      - name: Build Docker image
+      - name: Build app image
         run: |
           docker build -t $REGISTRY/$IMAGE_NAME:$VERSION .
           docker tag $REGISTRY/$IMAGE_NAME:$VERSION $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
-      - name: Login to Yandex Cloud Container Registry
+      - name: Login to Yandex CR
+        id: loginc-cr
         uses: yc-actions/yc-cr-login@v1
+        with:
+          yc-iam-token: ${{ secrets.YC_IAM_TOKEN }}
 
-      - name: Push Docker images
+      - name: Push app images
         run: |
           docker push $REGISTRY/$IMAGE_NAME:$VERSION
           docker push $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
-  # 4. Создание Git тега
   tag:
     needs: prepare-release
     runs-on: ubuntu-latest
@@ -97,7 +99,6 @@ jobs:
           git tag $VERSION
           git push origin $VERSION
 
-  # 5. Создание GitHub Issue и обновление CHANGELOG.md
   changelog:
     needs: tag
     runs-on: ubuntu-latest
