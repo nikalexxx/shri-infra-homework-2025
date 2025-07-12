@@ -30,6 +30,11 @@ jobs:
             - name: Build Docker (Fix)
               run: docker build -t $REGISTRY:${VERSION}_fix${FIX} -t $REGISTRY:${VERSION}_latest .
 
+            - name: Install Yandex Cloud CLI
+              run: |
+                  curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+                  echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
             - name: Authenticate YC CLI
               run: |
                   yc config set token "${{ secrets.YC_OAUTH_TOKEN }}"
