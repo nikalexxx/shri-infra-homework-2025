@@ -43,6 +43,9 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
+            # Решение проблемы с правами Docker
+            sudo chmod 666 /var/run/docker.sock || true
+            
             echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login \
               --username oauth \
               --password-stdin \
@@ -51,57 +54,58 @@ jobs:
             IMAGE_TAG="${{ github.event.inputs.release_version }}_latest"
             docker pull ${{ env.REGISTRY }}/app:$IMAGE_TAG
             
-            sudo docker stop app || true
-            sudo docker rm app || true
+            docker stop app || true
+            docker rm app || true
             
-            sudo docker run -d \
+            docker run -d \
               --name app \
               -p 3000:3000 \
               ${{ env.REGISTRY }}/app:$IMAGE_TAG
             
             sleep 5
-            sudo docker ps --filter "name=app" --format "table {{.Names}}\t{{.Status}}"
-            - name: Add deployment comment to issue
-                env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                run: |
-                  # Используем GitHub API вместо gh CLI
-                  BASE_VERSION=$(echo "${{ github.event.inputs.release_version }}" | sed 's/_fix.*//')
-                  
-                  # Поиск issue релиза через GitHub API
-                  RESPONSE=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-                    -H "Accept: application/vnd.github+json" \
-                    "https://api.github.com/repos/${{ github.repository }}/issues?state=all")
-                  
-                  # Ищем issue с нужным заголовком
-                  ISSUE_ID=$(echo "$RESPONSE" | jq -r --arg title "Release v$BASE_VERSION" '.[] | select(.title == $title) | .number')
-                  
-                  if [ -z "$ISSUE_ID" ]; then
-                    # Если не нашли, создаем новое issue
-                    NEW_ISSUE=$(curl -s -X POST -H "Authorization: Bearer $GITHUB_TOKEN" \
-                      -H "Accept: application/vnd.github+json" \
-                      -d '{"title":"Release v'$BASE_VERSION'", "body":"Automatic issue created for deployment tracking"}' \
-                      "https://api.github.com/repos/${{ github.repository }}/issues")
-                    ISSUE_ID=$(echo "$NEW_ISSUE" | jq -r '.number')
-                    echo "Created new issue #$ISSUE_ID"
-                  fi
-                  
-                  # Формируем комментарий
-                  COMMENT="🚀 **Deployed to production**\n\n"\
-                          "**Release version:** ${{ github.event.inputs.release_version }}\n"\
-                          "**Docker image:** ${{ env.REGISTRY }}/app:${{ github.event.inputs.release_version }}_latest\n"\
-                          "**Deployed at:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')\n"\
-                          "**Deployed by:** ${{ github.actor }}\n"\
-                          "**Access URL:** http://${{ secrets.VM_IP }}:3000/hw/store"
-                  
-                  # Экранируем специальные символы для JSON
-                  ESCAPED_COMMENT=$(echo "$COMMENT" | jq -Rs .)
-                  
-                  # Добавляем комментарий через API
-                  curl -s -X POST \
-                    -H "Authorization: Bearer $GITHUB_TOKEN" \
-                    -H "Accept: application/vnd.github+json" \
-                    -d '{"body":'"$ESCAPED_COMMENT"'}' \
-                    "https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_ID/comments"
-                  
-                  echo "Added deployment comment to issue #$ISSUE_ID"
+            docker ps --filter "name=app" --format "table {{.Names}}\t{{.Status}}"
+            echo "Приложение доступно по адресу: http://$(curl -s ifconfig.me):3000/hw/store"
+      - name: Add deployment comment to issue
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+              # Используем GitHub API вместо gh CLI
+              BASE_VERSION=$(echo "${{ github.event.inputs.release_version }}" | sed 's/_fix.*//')
+              
+              # Поиск issue релиза через GitHub API
+              RESPONSE=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${{ github.repository }}/issues?state=all")
+              
+              # Ищем issue с нужным заголовком
+              ISSUE_ID=$(echo "$RESPONSE" | jq -r --arg title "Release v$BASE_VERSION" '.[] | select(.title == $title) | .number')
+              
+              if [ -z "$ISSUE_ID" ]; then
+                # Если не нашли, создаем новое issue
+                NEW_ISSUE=$(curl -s -X POST -H "Authorization: Bearer $GITHUB_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  -d '{"title":"Release v'$BASE_VERSION'", "body":"Automatic issue created for deployment tracking"}' \
+                  "https://api.github.com/repos/${{ github.repository }}/issues")
+                ISSUE_ID=$(echo "$NEW_ISSUE" | jq -r '.number')
+                echo "Created new issue #$ISSUE_ID"
+              fi
+              
+              # Формируем комментарий
+              COMMENT="🚀 **Deployed to production**\n\n"\
+                      "**Release version:** ${{ github.event.inputs.release_version }}\n"\
+                      "**Docker image:** ${{ env.REGISTRY }}/app:${{ github.event.inputs.release_version }}_latest\n"\
+                      "**Deployed at:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')\n"\
+                      "**Deployed by:** ${{ github.actor }}\n"\
+                      "**Access URL:** http://${{ secrets.VM_IP }}:3000/hw/store"
+              
+              # Экранируем специальные символы для JSON
+              ESCAPED_COMMENT=$(echo "$COMMENT" | jq -Rs .)
+              
+              # Добавляем комментарий через API
+              curl -s -X POST \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -d '{"body":'"$ESCAPED_COMMENT"'}' \
+                "https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_ID/comments"
+              
+              echo "Added deployment comment to issue #$ISSUE_ID"
