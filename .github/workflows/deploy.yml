@@ -81,7 +81,7 @@ jobs:
       - name: 📊 Добавление комментария в GitHub Issue
         uses: peter-evans/create-or-update-comment@v4
         with:
-          issue-number: Release ${{ github.event.inputs.version }}
+          issue-number: ${{ github.event.inputs.version }}
           body: |
             🌐 Релиз **${{ github.event.inputs.version }}** выкачан в прод  
             📅 Дата: $(date +%F)  
