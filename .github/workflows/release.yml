@@ -36,8 +36,10 @@ jobs:
           yc config set service-account-key key.json
           yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
           yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
-          IAM_TOKEN=$(yc iam create-token)
+          IAM_TOKEN=$(yc iam create-token --sa-key-file key.json)
+          [ -z "$IAM_TOKEN" ] && exit 1
           echo "$IAM_TOKEN" | docker login --username iam --password-stdin cr.yandex
+          cat ~/.docker/config.json | grep "cr.yandex" || exit 1
           rm -f key.json
 
       - name: Install project dependencies
@@ -58,8 +60,9 @@ jobs:
       - name: Build and push Docker image
         run: |
           docker buildx create --use
-          docker buildx build --platform linux/amd64 -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }} -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:latest --push .
-          yc container image list --repository-name=cr.yandex/${{ secrets.REGISTRY_ID }}/app
+          docker buildx inspect --bootstrap
+          docker buildx build --platform linux/amd64 -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }} -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:latest --push --progress=plain .
+          yc container image list --repository-name=cr.yandex/${{ secrets.REGISTRY_ID }}/app | grep ${{ github.run_number }} || exit 1
 
       - name: Create version tag
         run: |
@@ -68,8 +71,8 @@ jobs:
 
       - name: Update changelog
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0)
-          COMMITS=$(git log $PREV_TAG..HEAD --oneline --no-merges | sed 's/^/- /')
+          PREV_TAG=$(git describe --tags --abbrev=0 || echo "")
+          [ -z "$PREV_TAG" ] && COMMITS=$(git log --oneline --no-merges | sed 's/^/- /') || COMMITS=$(git log $PREV_TAG..HEAD --oneline --no-merges | sed 's/^/- /')
           echo "## v${{ github.run_number }} ($(date +%Y-%m-%d))" > CHANGELOG.new
           echo "$COMMITS" >> CHANGELOG.new
           cat CHANGELOG.md >> CHANGELOG.new 2>/dev/null || true
@@ -82,6 +85,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0)
+          PREV_TAG=$(git describe --tags --abbrev=0 || echo "initial")
           COMMITS=$(git log $PREV_TAG..HEAD --oneline --no-merges | sed 's/^/- /')
           gh issue create --title "Release v${{ github.run_number }}" --body "Version: ${{ github.run_number }}\n\nChanges:\n$COMMITS\n\nImage: cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }}"
