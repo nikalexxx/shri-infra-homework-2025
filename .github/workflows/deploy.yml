@@ -25,12 +25,12 @@ jobs:
 
       - name: ✨ Проверка доступности образа в YCR
         run: |
-          echo "Проверяем наличие тега $VERSION\_latest в YCR..."
-          docker manifest inspect $REGISTRY:${VERSION}_latest >/dev/null || {
-            echo "❌ Образ с тегом ${VERSION}_latest не найден в Container Registry";
-            exit 1;
-          }
-          echo "✅ Образ найден."
+            echo "Проверяем наличие тега ${VERSION}_latest в YCR..."
+            docker pull $REGISTRY:${VERSION}_latest >/dev/null || {
+            echo "❌ Образ с тегом ${VERSION}_latest не найден в Container Registry"
+            exit 1
+            }
+            echo "✅ Образ найден и успешно скачан."
 
       - name: 🚚 Подключение к серверу и деплой
         uses: appleboy/ssh-action@v0.1.7
