@@ -1,93 +1,93 @@
 name: Release
 
 on:
-    workflow_dispatch:
+  workflow_dispatch:
 
 permissions:
-    contents: write
-    issues: write
+  contents: write
+  issues: write
 
 env:
-    REGISTRY_URL: cr.yandex.ru
-    REGISTRY: cr.yandex.ru/${{ secrets.YC_REGISTRY_ID }}/app
+  REGISTRY_URL: cr.yandex.ru
+  REGISTRY: cr.yandex.ru/${{ secrets.YC_REGISTRY_ID }}/app
 
 jobs:
-    release:
-        runs-on: ubuntu-latest
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
+      - name: Authenticate YC CLI
+        run: |
+          yc config set token "${{ secrets.YC_OAUTH_TOKEN }}"
+          yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
+          yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
+
+      - name: Configure Docker to use Yandex credential helper
+        run: |
+          yc container registry configure-docker
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+      - name: Create release branch
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "ci@example.com"
+          git checkout -b releases/${VERSION}
+          git push origin releases/${VERSION}
+
+      - name: Build Docker image locally
+        run: |
+          docker build -t app .
+
+      - name: Tag Docker image with full registry path
+        run: |
+          docker tag app $REGISTRY:${VERSION}
+          docker tag app $REGISTRY:${VERSION}_latest
+
+      - name: Push Docker images to Yandex Container Registry
+        run: |
+          docker push $REGISTRY:${VERSION}
+          docker push $REGISTRY:${VERSION}_latest
+
+      - name: Create git tag
+        run: |
+          git tag ${VERSION}
+          git push origin ${VERSION}
+
+      - name: Generate commit list
+        id: changelog
+        run: |
+          git fetch --tags
+          PREV=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | head -n1)
+          git log $PREV..HEAD --oneline > commits.txt
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          cat commits.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create GitHub Issue for release
         env:
-            VERSION: ${{ github.run_number }}
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Yandex Cloud CLI
-              run: |
-                  curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-                  echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
-
-            - name: Authenticate YC CLI
-              run: |
-                  yc config set token "${{ secrets.YC_OAUTH_TOKEN }}"
-                  yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
-                  yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
-
-            - name: Configure Docker to use Yandex credential helper
-              run: |
-                  yc container registry configure-docker
-
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: 18
-
-            - name: Install dependencies
-              run: npm ci
-
-            - name: Run linter
-              run: npm run lint
-
-            - name: Run tests
-              run: npm test
-
-            - name: Create release branch
-              run: |
-                  git config user.name "${{ github.actor }}"
-                  git config user.email "ci@example.com"
-                  git checkout -b releases/${VERSION}
-                  git push origin releases/${VERSION}
-
-            - name: Build Docker image
-              run: |
-                  docker build -t app .
-
-            - name: Tag Docker image
-              run: |
-                  docker tag app $REGISTRY:${VERSION}
-                  docker tag app $REGISTRY:${VERSION}_latest
-
-            - name: Push Docker images
-              run: |
-                  docker push $REGISTRY:${VERSION}
-                  docker push $REGISTRY:${VERSION}_latest
-
-            - name: Create git tag
-              run: |
-                  git tag ${VERSION}
-                  git push origin ${VERSION}
-
-            - name: Generate commit list
-              id: changelog
-              run: |
-                  git fetch --tags
-                  PREV=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | head -n1)
-                  git log $PREV..HEAD --oneline > commits.txt
-                  echo "COMMITS<<EOF" >> $GITHUB_ENV
-                  cat commits.txt >> $GITHUB_ENV
-                  echo "EOF" >> $GITHUB_ENV
-
-            - name: Create GitHub Issue for release
-              env:
-                  COMMITS: ${{ env.COMMITS }}
-              run: |
-                  gh issue create \
-                    --title "Release $VERSION" \
-                    --body "**Дата:** $(date)\n**Автор:** ${{ github.actor }}\n**Версия:** $VERSION\n\n**Коммиты:**\n${COMMITS}\n\nDocker: $REGISTRY:$VERSION"
+          COMMITS: ${{ env.COMMITS }}
+        run: |
+          gh issue create \
+            --title "Release $VERSION" \
+            --body "**Дата:** $(date)\n**Автор:** ${{ github.actor }}\n**Версия:** $VERSION\n\n**Коммиты:**\n${COMMITS}\n\nDocker: $REGISTRY:$VERSION"
