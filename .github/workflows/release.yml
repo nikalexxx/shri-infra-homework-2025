@@ -7,8 +7,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v3
         with:
           node-version: '16'
       
@@ -17,6 +17,12 @@ jobs:
           npm ci
           npm run lint
           npm run test
+        
+      - name: Login to Yandex Container Registry
+        run: |
+          echo "${{ secrets.YC_SA_KEY }}" > key.json
+          yc config set service-account-key key.json
+          yc container registry configure-docker
         
       - name: Create release branch
         run: |
@@ -27,10 +33,10 @@ jobs:
         
       - name: Build and push Docker image
         run: |
-          docker build -t cr.yandex/${{ secrets.crpj0rsfvvem9ps4apgr }}/app:${{ github.run_number }} .
-          docker tag cr.yandex/${{ secrets.crpj0rsfvvem9ps4apgr }}/app:${{ github.run_number }} cr.yandex/${{ secrets.Rcrpj0rsfvvem9ps4apgr }}/app:latest
-          docker push cr.yandex/${{ secrets.crpj0rsfvvem9ps4apgr }}/app:${{ github.run_number }}
-          docker push cr.yandex/${{ secrets.crpj0rsfvvem9ps4apgr }}/app:latest
+          docker build -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }} .
+          docker tag cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }} cr.yandex/${{ secrets.REGISTRY_ID }}/app:latest
+          docker push cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }}
+          docker push cr.yandex/${{ secrets.REGISTRY_ID }}/app:latest
         
       - name: Create tag
         run: |
