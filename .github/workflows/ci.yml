@@ -7,6 +7,8 @@ on:
 
 jobs:
   lint:
+    name: Lint check
+
     runs-on: ubuntu-latest
 
     steps:
@@ -24,6 +26,8 @@ jobs:
         run: npm run lint
 
   test:
+    name: Test suite
+
     runs-on: ubuntu-latest
 
     steps:
