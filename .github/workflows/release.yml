@@ -1,6 +1,8 @@
 name: Create Release
+
 on:
   workflow_dispatch:
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -9,55 +11,62 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: 0  
+          fetch-depth: 0  # важно, чтобы видеть все теги
       - uses: actions/setup-node@v3
         with:
           node-version: '22'
       - run: npm ci
       - run: npm run lint
       - run: npm run test
+
       - name: Get version
         id: version
         run: echo "VERSION=${{ github.run_number }}" >> $GITHUB_ENV
+
       - name: Create release branch
         run: |
           git checkout -b releases/${{ env.VERSION }}
           git push origin releases/${{ env.VERSION }}
+
       - name: Docker build and tag
         run: |
           docker build -t $REGISTRY:${{ env.VERSION }} -t $REGISTRY:${{ env.VERSION }}_latest .
-      
+
       - name: Push to Yandex Registry
         run: |
           docker login --username oauth --password ${{ secrets.YA_OAUTH_TOKEN }} cr.yandex
           docker push $REGISTRY:${{ env.VERSION }}
           docker push $REGISTRY:${{ env.VERSION }}_latest
+
       - name: Create Git tag
         run: |
           git tag v${{ env.VERSION }}
           git push origin v${{ env.VERSION }}
-      - name: Generate changelog + GitHub Issue
+
+      - name: Generate changelog and GitHub Issue
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 --match "v*" || echo "")
-          CURRENT_TAG="v${VERSION}"          
-          # Обновляем CHANGELOG
+          VERSION=${{ env.VERSION }}
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+(-fix[0-9]+)?$' | grep -v "v${VERSION}" | head -n1)
+          COMMITS=$(git log --pretty=format:'- %s (%an)' ${PREV_TAG}..HEAD)
+
           echo -e "## v${VERSION} — $(date +'%Y-%m-%d')\n$COMMITS\n\n$(cat CHANGELOG.md 2>/dev/null)" > CHANGELOG.md
+          
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add CHANGELOG.md
           git commit -m "Update CHANGELOG for v${VERSION}"
           git push origin HEAD
-          
-          # Создаем issue с использованием heredoc для многострочного текста
+
           gh issue create \
             --title "Release v${VERSION}" \
-            --body "**Дата:** $(date +'%Y-%m-%d')  
-          **Автор:** @${{ github.actor }} 
+            --body "
+          **Дата:** $(date +'%Y-%m-%d')  
+          **Автор:** @${{ github.actor }}  
           **Версия:** v${VERSION}  
           **Docker-образ:** cr.yandex/${{ secrets.YA_REGISTRY_ID }}/app:${VERSION}  
-          
+
           **Коммиты:**  
-          $(git log --pretty=format:'- %s (%an)' v${VERSION}..HEAD)
+          $COMMITS
           "
