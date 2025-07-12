@@ -8,7 +8,8 @@ permissions:
   issues: write
 
 env:
-  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+  REGISTRY_URL: cr.yandex.ru
+  REGISTRY: cr.yandex.ru/${{ secrets.YC_REGISTRY_ID }}/app
 
 jobs:
   release:
@@ -62,7 +63,7 @@ jobs:
 
       - name: Login to Yandex Container Registry
         run: |
-          echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
+          echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin $REGISTRY_URL
 
       - name: Build Docker image
         run: |
