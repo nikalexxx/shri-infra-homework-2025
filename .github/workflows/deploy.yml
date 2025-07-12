@@ -18,28 +18,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Save YC_SERVICE_KEY to file and show info
+      - name: Install Yandex CLI
         run: |
-          echo "=== Step: Save YC_SERVICE_KEY to key.json ==="
-          printf '%s' "${{ secrets.YC_SERVICE_KEY }}" > key.json
-          echo "=== Content of key.json ==="
-          cat key.json
-          echo "=== Validating JSON format with jq ==="
-          jq . key.json
-          echo "=== Extracting access_token ==="
-          ACCESS_TOKEN=$(jq -r .access_token key.json)
-          echo "Access token extracted (hidden for security)"
-          # Не выводим сам токен в лог, чтобы не сливать секрет
+          echo "=== Installing Yandex CLI ==="
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          export PATH=$HOME/.yandex-cloud/bin:$PATH
+          echo "=== Yandex CLI version ==="
+          yc --version
 
-      - name: Login to Yandex Container Registry
+      - name: Authenticate with Yandex CLI and login to Yandex Container Registry
+        env:
+          YC_SERVICE_KEY: ${{ secrets.YC_SERVICE_KEY }}
         run: |
-          echo "=== Step: Logging in to Yandex Container Registry ==="
-          ACCESS_TOKEN=$(jq -r .access_token key.json)
-          if [ -z "$ACCESS_TOKEN" ]; then
-            echo "Error: access_token is empty!"
+          echo "=== Saving YC_SERVICE_KEY to key.json ==="
+          printf '%s' "$YC_SERVICE_KEY" > key.json
+          echo "=== Contents of key.json ==="
+          cat key.json
+          echo "=== Validating key.json with jq ==="
+          jq . key.json
+
+          echo "=== Creating IAM token ==="
+          TOKEN=$(yc iam create-token --key-file key.json)
+          if [ -z "$TOKEN" ]; then
+            echo "Error: Failed to get IAM token"
             exit 1
           fi
-          echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
+          echo "IAM token obtained (hidden for security)"
+
+          echo "=== Logging in to Yandex Container Registry ==="
+          echo "$TOKEN" | docker login --username oauth --password-stdin cr.yandex
           echo "Docker login successful"
 
       - name: Deploy on remote server via SSH
@@ -49,28 +56,35 @@ jobs:
           username: ${{ secrets.VM_SSH_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            echo "=== Step: Save YC_SERVICE_KEY to key.json on server ==="
+            echo "=== Saving YC_SERVICE_KEY to key.json on server ==="
             printf '%s' '${{ secrets.YC_SERVICE_KEY }}' > key.json
-            echo "=== Content of key.json on server ==="
+            echo "=== Contents of key.json on server ==="
             cat key.json
-            echo "=== Validate JSON on server ==="
-            jq . key.json || { echo "jq failed on server"; exit 1; }
-            ACCESS_TOKEN=$(jq -r .access_token key.json)
-            if [ -z "$ACCESS_TOKEN" ]; then
-              echo "Error: access_token is empty on server!"
+            echo "=== Validating key.json on server with jq ==="
+            jq . key.json || { echo "jq validation failed on server"; exit 1; }
+
+            echo "=== Creating IAM token on server ==="
+            TOKEN=$(yc iam create-token --key-file key.json)
+            if [ -z "$TOKEN" ]; then
+              echo "Error: Failed to get IAM token on server"
               exit 1
             fi
-            echo "=== Logging in to Yandex Container Registry on server ==="
-            echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
-            echo "Docker login on server successful"
+            echo "IAM token obtained on server (hidden)"
 
-            echo "=== Stopping and removing old container (if any) ==="
-            docker stop app || echo "No running container to stop"
+            echo "=== Logging in to Yandex Container Registry on server ==="
+            echo "$TOKEN" | docker login --username oauth --password-stdin cr.yandex
+            echo "Docker login successful on server"
+
+            echo "=== Stopping old container if exists ==="
+            docker stop app || echo "No container to stop"
+
+            echo "=== Removing old container if exists ==="
             docker rm app || echo "No container to remove"
 
-            echo "=== Pulling image $REGISTRY:${VERSION}_latest ==="
+            echo "=== Pulling new image $REGISTRY:${VERSION}_latest ==="
             docker pull $REGISTRY:${VERSION}_latest
 
-            echo "=== Running container app ==="
+            echo "=== Starting new container ==="
             docker run -d --name app -p 80:3000 $REGISTRY:${VERSION}_latest
-            echo "Container started successfully"
+
+            echo "=== Deployment completed successfully ==="
