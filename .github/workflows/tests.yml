@@ -1,9 +1,6 @@
-name: CI Pipeline
+name: Run test and lint
 
 on:
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       branch:

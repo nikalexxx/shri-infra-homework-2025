@@ -1,0 +1,138 @@
+name: Manual Release Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        type: string
+        description: 'Branch to run CI on'
+        default: main
+
+env:
+  YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
+  REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
+  VERSION: ${{ github.run_number }}
+
+jobs:
+  lint-and-test:
+    uses: ./.github/workflows/tests.yml
+
+  build-and-release:
+    name: Build and Release
+    # запускает параллельно линтер и тесты
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Git user
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      # - создаёт тег, с номером текущей версии, который указывает на последний коммит в главной ветке
+      # TODO fix каежтся что тег это просто номер запуска у анс
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
+
+      # отводит от `main` релизуню ветку `releases/<версия_релиза>`
+      - name: Create release branch
+        run: |
+          git checkout -b releases/${{ env.VERSION }}
+          git push origin releases/${{ env.VERSION }}
+
+      # [собирает docker-образ](https://yandex.cloud/ru/docs/container-registry/operations/docker-image/docker-image-create) с двумя тегами тегами:
+      - name: Build Docker image
+        run: |
+          docker build -t cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }} \
+                       -t cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}_latest .
+
+      # https://yandex.cloud/ru/docs/cli/operations/install-cli
+      # - name: Install yandex cli
+      #   run: |
+      #     curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+
+      # - name: Check yandex cli
+      #   run: |
+      #     yc --help
+
+      # TODO fix
+      # https://yandex.cloud/ru/docs/container-registry/operations/authentication#cred-helper
+      - name: Login to Yandex Container Registry
+        run: |
+          echo ${{ secrets.YANDEX_OAUTH_TOKEN }}|docker login \
+            --username oauth \
+            --password-stdin \
+          cr.yandex
+
+      # TODO каежтся везед заменить app на shri-infra-homework-2025
+      - name: Push Docker images
+        run: |
+          docker push cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}
+          docker push cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}_latest
+
+      # TODO fix
+      - name: Create Git tag
+        run: |
+          git tag v${{ env.VERSION }}
+          git push origin v${{ env.VERSION }}
+
+      # получает список комитов для CHANGELOG.md
+      - name: Generate commit list
+        id: commits
+        run: |
+          if [ -z "${{ env.PREV_TAG }}" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD)
+          else
+            COMMITS=$(git log ${{ env.PREV_TAG }}..HEAD --pretty=format:"- %s (%h)")
+          fi
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      #  обновляет файл `CHANGELOG.md` в корне проекта, дописывает сверху новую версию в виде заголовка, а под ней — список коммитов от предыдущего релизного (или фиксрелизного) тега
+      - name: Update CHANGELOG.md
+        run: |
+          echo "# v${{ env.VERSION }} $(date +'%Y-%m-%d')" > new_changelog.md
+          echo "" >> new_changelog.md
+          echo "${{ env.COMMITS }}" >> new_changelog.md
+          echo "" >> new_changelog.md
+          cat CHANGELOG.md >> new_changelog.md
+          mv new_changelog.md CHANGELOG.md
+
+          git add CHANGELOG.md
+          git commit -m "Update CHANGELOG for v${{ env.VERSION }}"
+          git push origin releases/${{ env.VERSION }}
+
+      # - создаёт Issue в GitHub, которое содержит всю важную информацию:
+      #     - дату,
+      #     - автора релиза (тот, кто запустил флоу),
+      #     - номер версии (`${{ github.run_number }}`),
+      #     - список коммитов от предыдущего релизного (или фиксрелизного) тега,
+      #     - ссылку на docker-образом в Yandex Container Registry\
+      #       `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>`
+      - name: Create GitHub Release Issue
+        uses: amannn/action-create-issue@v1
+        with:
+          title: "Release v${{ env.VERSION }}"
+          body: |
+            ### 📦 Release Information
+
+            - **Version:** v${{ env.VERSION }}
+            - **Date:** $(date +'%Y-%m-%d')
+            - **Author:** ${{ github.actor }}
+            - **Docker Image:** `cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}`
+
+            ### 📄 Changelog
+
+            ${{ env.COMMITS }}
+
+            ### 📂 Link
+
+            docker pull cr.yandex/${{ env.REGISTRY_ID }/app:${{ env.VERSION }}
+            
+          labels: "release"
