@@ -78,12 +78,14 @@ jobs:
 
           if [ -n "$ISSUE" ]; then
             BODY="$(cat <<EOF
-            **⚙️ Фикс **: $(date)
+            **⚙️ Фикс:** $(date)
             **Автор фикса:** ${{ github.actor }}
+            
             **Тег:** \`${VERSION}_fix${FIXNUM}\`
             **Образ:** \`$IMAGE\`
-            **Коммиты с ${ { steps.commits.outputs.prev_tag } }:**
-              ${{ steps.commits.outputs.list }}
+            
+            **Коммиты с ${{ steps.commits.outputs.prev_tag }}:**
+            ${{ steps.commits.outputs.list }}
             EOF
             )"
             gh issue comment "$ISSUE" --repo "$REPO" --body "$BODY"
