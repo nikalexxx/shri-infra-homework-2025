@@ -67,7 +67,7 @@ jobs:
           gh issue create \
             --title "Release v${VERSION}" \
             --body "**Дата:** $(date +'%Y-%m-%d')  
-          **Автор:** ${{ github.actor }}  
+          **Автор:** @${{ github.actor }} 
           **Версия:** v${VERSION}  
           **Docker-образ:** cr.yandex/${{ secrets.YA_REGISTRY_ID }}/app:${VERSION}  
           **Коммиты:**  

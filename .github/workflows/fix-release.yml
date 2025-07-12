@@ -45,30 +45,22 @@ jobs:
           git tag v${VERSION}-fix${FIX_NUMBER}
           git push origin v${VERSION}-fix${FIX_NUMBER}
 
-      - name: Generate commit log
-        id: commits
+      - name: Find Issue number and comment
         run: |
-          # Find the previous release tag (either fix or main release)
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v${VERSION}(-fix[0-9]+)?$" | sed -n 2p)
-          if [ -z "$PREV_TAG" ]; then
-            PREV_TAG=$(git tag --sort=-creatordate | grep "^v" | head -n 1)
+          ISSUE_NUMBER=$(gh issue list --state open --limit 10 --json number,title | \
+            grep -B1 "Release v$VERSION" | grep '"number":' | head -n1 | sed 's/[^0-9]*//g')
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "❌ Issue not found for version v$VERSION"
+            exit 1
           fi
-          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
-          echo "::set-output name=log::$(git log --pretty=format:'- %s (%an)' $PREV_TAG..HEAD)"
 
-      - name: Add comment to GitHub Issue
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          issue-number: ${{ env.VERSION }}
-          body: |
-            ### 🔧 Fix Release v${{ env.VERSION }}-fix${{ env.FIX_NUMBER }}
-            **Дата:** ${{ steps.date.outputs.date }}
-            **Автор:** @${{ github.actor }}
-            **Docker-образ:** `${{ env.REGISTRY }}:${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}`
+          gh issue comment "$ISSUE_NUMBER" --body "
+          ### 🔧 Fix Release v$VERSION-fix$FIX_NUMBER 
+          **Дата:** $(date -u)
+          **Автор:** @${{ github.actor }}
+          **Docker-образ:** \`$REGISTRY:${VERSION}_fix${FIX_NUMBER}\`
 
-            **Коммиты:**
-            ${{ steps.commits.outputs.log }}
-
-      - name: Set date
-        id: date
-        run: echo "::set-output name=date::$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          **Коммиты:**
+          $(git log --pretty=format:'- %s (%an)' v${VERSION}..HEAD)
+          "
