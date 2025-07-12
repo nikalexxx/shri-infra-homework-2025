@@ -35,8 +35,17 @@ jobs:
 
       - name: open deploy issue
         run: |
-          IMAGE="cr.yandex/${{ secrets.YC_REGISTRY }}/app:${{ inputs.version }}_latest"
-          gh issue comment --search "Deploy ${{ inputs.version }}" \
-            --body "**🚀 Выкат в прод**: $(date)\n**Автор:** ${{ github.actor }}\nОбраз: \`$IMAGE\`"
+          ISSUE=$(gh issue list \
+                    --state all \
+                    --search "Release ${{ inputs.version }}" \
+                    --json number \
+                    -q '.[0].number')
+
+          if [ -n "$ISSUE" ]; then
+            gh issue comment "$ISSUE" \
+              --body "**🚀 Выкат в прод**: $(date)\n**Автор:** ${{ github.actor }}"
+          else
+            echo "⚠️  Issue 'Deploy ${{ inputs.version }}' не найден."
+          fi
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
