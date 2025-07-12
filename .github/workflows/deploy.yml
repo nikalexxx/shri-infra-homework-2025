@@ -2,6 +2,10 @@ name: Deploy to Prod
 
 description: "Выкачка образа на прод-сервер через SSH"
 
+permissions:
+    contents: write
+    issues: write
+
 on:
     workflow_dispatch:
         inputs:
@@ -83,9 +87,8 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  # Проверяем, установлен ли gh
-                  if ! command -v gh &> /dev/null
-                  then
+                  VERSION="${{ github.event.inputs.version }}"
+                  if ! command -v gh &> /dev/null; then
                   echo "gh cli не установлен, ставим..."
                   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
                   sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
@@ -95,22 +98,27 @@ jobs:
                   fi
 
                   ISSUE_NUMBER=$(gh issue list --repo ${{ github.repository }} --state open --json number,title --limit 100 \
-                  | jq -r '.[] | select(.title=="'${{ github.event.inputs.version }}'") | .number')
+                  | jq -r --arg ver "$VERSION" '.[] | select(.title==$ver) | .number')
 
                   if [ -z "$ISSUE_NUMBER" ]; then
-                  echo "Ошибка: Issue с заголовком '${{ github.event.inputs.version }}' не найдено"
+                  echo "Ошибка: Issue с заголовком '$VERSION' не найдено"
                   exit 1
                   fi
 
                   echo "Найден issue номер: $ISSUE_NUMBER"
                   echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
 
+            - name: Получить дату
+              id: date
+              run: echo "DATE=$(date +%F)" >> $GITHUB_OUTPUT
+
             - name: 📊 Добавление комментария в GitHub Issue
               uses: peter-evans/create-or-update-comment@v4
               with:
+                  token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
                   issue-number: ${{ steps.find_issue.outputs.issue_number }}
                   body: |
                       🌐 Релиз **${{ github.event.inputs.version }}** выкачан в прод  
-                      📅 Дата: $(date +%F)  
+                      📅 Дата: ${{ steps.date.outputs.DATE }}
                       👤 Автор: @${{ github.actor }}  
                       📦 Образ: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest`
