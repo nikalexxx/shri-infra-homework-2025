@@ -1,0 +1,5 @@
+.gitignore
+.npmrc
+eslint.config.mjs
+README.md
+
