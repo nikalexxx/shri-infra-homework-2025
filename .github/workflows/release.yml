@@ -19,6 +19,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/.yandex-cloud/bin" >> $GITHUB_PATH
+
+      # Авторизация в Yandex Cloud через сервисный аккаунт
+      - name: Authenticate YC CLI
+        run: |
+          yc config set token "${{ secrets.YC_OAUTH_TOKEN }}"
+          yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
+          yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
+
+      - name: Configure Docker to use Yandex credential helper
+        run: |
+          yc container registry configure-docker
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -39,31 +55,6 @@ jobs:
           git config user.email "ci@example.com"
           git checkout -b releases/${VERSION}
           git push origin releases/${VERSION}
-
-      - name: Get access token from refresh token
-        id: yandex-auth
-        run: |
-          echo "=== Получаем access_token по refresh_token ==="
-          RESPONSE=$(curl -s -X POST https://oauth.yandex.ru/token \
-            -d grant_type=refresh_token \
-            -d refresh_token=${{ secrets.YANDEX_REFRESH_TOKEN }} \
-            -d client_id=${{ secrets.YANDEX_CLIENT_ID }} \
-            -d client_secret=${{ secrets.YANDEX_CLIENT_SECRET }})
-
-          echo "$RESPONSE"
-          ACCESS_TOKEN=$(echo "$RESPONSE" | jq -r .access_token)
-
-          if [ "$ACCESS_TOKEN" = "null" ]; then
-            echo "❌ Не удалось получить access_token"
-            exit 1
-          fi
-
-          echo "::add-mask::$ACCESS_TOKEN"
-          echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
-
-      - name: Login to Yandex Container Registry
-        run: |
-          echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin $REGISTRY_URL
 
       - name: Build Docker image
         run: |
