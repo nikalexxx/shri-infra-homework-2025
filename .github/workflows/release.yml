@@ -89,6 +89,8 @@ jobs:
       - name: Create GitHub Issue for release
         env:
           COMMITS: ${{ env.COMMITS }}
+          GH_TOKEN: ${{ github.token }}  
+
         run: |
           gh issue create \
             --title "Release ${{ env.VERSION }}" \
