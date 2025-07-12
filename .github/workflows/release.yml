@@ -40,12 +40,12 @@ jobs:
                   git checkout -b releases/${VERSION}
                   git push origin releases/${VERSION}
 
-            - name: Install Yandex Cloud CLI (yc)
+            - name: Install and configure yc CLI and login to Yandex Container Registry
               run: |
                   echo "=== Установка yc CLI ==="
                   curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
 
-                  # Обновляем окружение, чтобы yc был в PATH (в сессии GitHub Actions)
+                  echo "=== Добавляем yc в PATH ==="
                   export PATH="$HOME/.yandex-cloud/bin:$PATH"
 
                   echo "=== Проверяем версию yc ==="
@@ -53,15 +53,12 @@ jobs:
 
                   echo "=== Сохраняем сервисный ключ в key.json ==="
                   echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
-                  echo "=== Проверяем содержимое key.json ==="
-                  cat key.json
 
                   echo "=== Настраиваем yc CLI на использование сервисного ключа ==="
                   yc config set service-account-key-file key.json
 
                   echo "=== Получаем OAuth токен ==="
                   ACCESS_TOKEN=$(yc iam create-token)
-                  echo "=== Токен получен (скрыт в логах) ==="
 
                   echo "=== Логинимся в Yandex Container Registry ==="
                   echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
