@@ -63,7 +63,7 @@ jobs:
           echo "EOF"               >> $GITHUB_OUTPUT
       - name: Open release issue
         run: |
-          BODY=$(cat <<'EOF'
+          BODY=$(cat <<EOF
           **Дата:** $(date)
           **Версия:** ${{ env.VERSION }}
           **Коммиты:**
@@ -78,3 +78,9 @@ jobs:
             --label release
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Merge back to main
+        run: |
+          git fetch origin
+          git switch main
+          git merge --no-ff releases/${VERSION} -m "merge release ${VERSION}"
+          git push origin main
