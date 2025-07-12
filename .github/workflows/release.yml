@@ -1,0 +1,49 @@
+name: release
+on:
+  workflow_dispatch: {}
+
+env:
+  VERSION: ${{ github.run_number }}
+  IMAGE:   cr.yandex/${{ secrets.YC_REGISTRY }}/app
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: 'npm' }
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+
+      - run: |
+          git switch -c releases/${VERSION}
+          git push -u origin HEAD
+
+      - run: docker login cr.yandex -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }}
+      - run: |
+          docker build -t ${IMAGE}:${VERSION} -t ${IMAGE}:${VERSION}_latest .
+          docker push ${IMAGE}:${VERSION}
+          docker push ${IMAGE}:${VERSION}_latest
+
+      - run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "LAST_TAG=${LAST_TAG}" >> $GITHUB_ENV
+          git tag ${VERSION}
+          git push --tags
+      - run: |
+          COMMITS=$(git log --pretty=format:'- %s' ${LAST_TAG}..HEAD)
+          sed -i "1s;^;## ${VERSION} ($(date +%Y-%m-%d))\n${COMMITS}\n\n;" CHANGELOG.md
+          git add CHANGELOG.md && git commit -m "chore: changelog for ${VERSION}" && git push
+      - name: Open release issue
+        run: |
+          gh issue create \
+            --title "Release ${VERSION}" \
+            --body "**Дата:** $(date)\n**Версия:** ${VERSION}\n**Коммиты:**\n${COMMITS}\n\nОбраз: \`${IMAGE}:${VERSION}\`" \
+            --label release
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}

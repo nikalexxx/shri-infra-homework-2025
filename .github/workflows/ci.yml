@@ -1,0 +1,13 @@
+name: lint-and-test
+on: [pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy: { matrix: { task: [lint, test] } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: 'npm' }
+      - run: npm ci
+      - run: npm run ${{ matrix.task }}

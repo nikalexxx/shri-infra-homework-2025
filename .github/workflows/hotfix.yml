@@ -1,0 +1,42 @@
+name: hotfix
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Базовая версия релиза (например 12)"
+        required: true
+
+env:
+  IMAGE: cr.yandex/${{ secrets.YC_REGISTRY }}/app
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: releases/${{ inputs.version }} }
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: 'npm' }
+      - run: npm ci && npm run lint && npm run test
+
+      - name: calc fix number
+        id: calc
+        run: echo "n=$(( ${{ github.run_number }} ))" >> $GITHUB_OUTPUT
+
+      - run: docker login cr.yandex -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }}
+      - run: |
+          docker build -t ${IMAGE}:${{ inputs.version }}_fix${{ steps.calc.outputs.n }} \
+                       -t ${IMAGE}:${{ inputs.version }}_latest .
+          docker push ${IMAGE}:${{ inputs.version }}_fix${{ steps.calc.outputs.n }}
+          docker push ${IMAGE}:${{ inputs.version }}_latest
+
+      - run: |
+          git tag ${{
+            inputs.version }}_fix${{ steps.calc.outputs.n }}
+          git push --tags
+      - name: comment issue
+        run: |
+          gh issue comment --search "Release ${{ inputs.version }}" \
+            --body "**Фикс** $(date)\nтег \`${inputs.version}_fix${{ steps.calc.outputs.n }}\`\nобраз \`${IMAGE}:${{ inputs.version }}_fix${{ steps.calc.outputs.n }}\`"
+        env: { GH_TOKEN: ${{ secrets.GH_TOKEN }} }
