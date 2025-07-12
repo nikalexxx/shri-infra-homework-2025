@@ -25,12 +25,12 @@ jobs:
 
       - name: ✨ Проверка доступности образа в YCR
         run: |
-            echo "Проверяем наличие тега ${VERSION}_latest в YCR..."
-            docker pull $REGISTRY:${VERSION}_latest >/dev/null || {
+          echo "Проверяем наличие тега ${VERSION}_latest в YCR..."
+          docker pull $REGISTRY:${VERSION}_latest >/dev/null || {
             echo "❌ Образ с тегом ${VERSION}_latest не найден в Container Registry"
             exit 1
-            }
-            echo "✅ Образ найден и успешно скачан."
+          }
+          echo "✅ Образ найден и успешно скачан."
 
       - name: 🚚 Подключение к серверу и деплой
         uses: appleboy/ssh-action@v0.1.7
@@ -43,8 +43,9 @@ jobs:
 
             echo "1. Получение YC access token..."
             echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
-            echo "key.json содержимое (безопасно скрыто)"
+            echo "key.json сохранён (не выводим содержимое)"
             ACCESS_TOKEN=$(cat key.json | jq -r .access_token)
+
             echo "2. Логинимся в Docker Registry..."
             echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
 
@@ -65,9 +66,9 @@ jobs:
       - name: 📊 Добавление комментария в GitHub Issue
         uses: peter-evans/create-or-update-comment@v4
         with:
-          issue-number: ${{ github.event.inputs.version }} 
+          issue-number: ${{ github.event.inputs.version }}
           body: |
-            🌐 Релиз **${{ github.event.inputs.version }}** выкачан в прод 
-            📅 Дата: $(date +%F)
-            👤 Автор: @${{ github.actor }}
+            🌐 Релиз **${{ github.event.inputs.version }}** выкачан в прод  
+            📅 Дата: $(date +%F)  
+            👤 Автор: @${{ github.actor }}  
             📦 Образ: `${{ env.REGISTRY }}:${{ env.VERSION }}_latest`

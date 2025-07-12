@@ -8,7 +8,7 @@ permissions:
   issues: write
 
 env:
-  REGISTRY_URL: cr.yandex.ru        # для аутентификации и credential helper
+  REGISTRY_URL: cr.yandex.ru        
   REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
   IMAGE_NAME: app
   REGISTRY_IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
