@@ -116,7 +116,7 @@
         #     - ссылку на docker-образом в Yandex Container Registry\
         #       `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>`
         - name: Create GitHub Release Issue
-          uses: AdrianKlain/create-issue-action@v1
+          uses: dacbd/create-issue-action@main
           with:
             title: "Release v${{ env.VERSION }}"
             body: |
