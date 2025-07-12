@@ -57,7 +57,12 @@ jobs:
 
             - name: Build Docker image
               run: |
-                  docker build -t $REGISTRY:${VERSION} -t $REGISTRY:${VERSION}_latest .
+                  docker build -t app .
+
+            - name: Tag Docker image
+              run: |
+                  docker tag app $REGISTRY:${VERSION}
+                  docker tag app $REGISTRY:${VERSION}_latest
 
             - name: Push Docker images
               run: |
