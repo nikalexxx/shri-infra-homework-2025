@@ -6,7 +6,6 @@ on:
       - opened
       - edited
       - synchronize
-
 jobs:
   install:
     name: Install dependencies
@@ -15,14 +14,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20 with cache
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm' 
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Cache node_modules
+        uses: actions/cache@v3
+        id: cache-node-modules
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
   lint:
     name: Lint Code
@@ -32,11 +40,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Restore Node.js and cache
-        uses: actions/setup-node@v4
+      - name: Restore node_modules cache
+        uses: actions/cache@v3
         with:
-          node-version: 20
-          cache: 'npm' 
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
       - name: Run ESLint
         run: npm run lint
@@ -51,12 +61,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Restore Node.js and cache
-        uses: actions/setup-node@v4
+      - name: Restore node_modules cache
+        uses: actions/cache@v3
         with:
-          node-version: 20
-          cache: 'npm'
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-      - name: Run Jest tests
+      - name: Run tests
         run: npm run test
 
