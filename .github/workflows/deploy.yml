@@ -61,4 +61,34 @@ jobs:
             
             sleep 5
             sudo docker ps --filter "name=app" --format "table {{.Names}}\t{{.Status}}"
-            echo "Приложение доступно по адресу: http://$(curl -s ifconfig.me):3000/hw/store"
+      - name: Add deployment comment to issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          type -p gh >/dev/null || sudo apt-get install -y gh
+          
+          gh auth login --with-token <<< "$GITHUB_TOKEN"
+          
+          BASE_VERSION=$(echo "${{ github.event.inputs.release_version }}" | sed 's/_fix.*//')
+          
+          ISSUE_ID=$(gh issue list --search "Release v${BASE_VERSION}" --json number -q '.[0].number' 2>/dev/null)
+          
+          if [ -z "$ISSUE_ID" ]; then
+            echo "::warning::Release issue for v${BASE_VERSION} not found!"
+            ISSUE_ID=$(gh issue create \
+              --title "Deployment of v${BASE_VERSION}" \
+              --body "Automatic issue created for deployment tracking" \
+              --json number -q '.number')
+            echo "Created new issue #$ISSUE_ID"
+          fi
+          
+          COMMENT="🚀 **Deployed to production**\n\n"\
+                  "**Release version:** ${{ github.event.inputs.release_version }}\n"\
+                  "**Docker image:** ${{ env.REGISTRY }}/app:${{ github.event.inputs.release_version }}_latest\n"\
+                  "**Deployed at:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')\n"\
+                  "**Deployed by:** ${{ github.actor }}\n"\
+                  "**Access URL:** http://${{ secrets.VM_IP }}:3000/hw/store"
+          
+          gh issue comment $ISSUE_ID --body "$COMMENT"
+          
+          echo "Added deployment comment to issue #$ISSUE_ID"
