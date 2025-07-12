@@ -1,10 +1,9 @@
 name: Release
 
-on:
-  workflow_dispatch:
+on: workflow_dispatch
 
 env:
-  REGISTRY: cr.yandex/<идентификатор_реестра>
+  REGISTRY: cr.yandex/crp8ugevmr1vj1p9f3jh
   IMAGE_NAME: app
   VERSION: ${{ github.run_number }}
 
@@ -23,7 +22,6 @@ jobs:
       - run: npm ci
       - run: npm run ${{ matrix.task }}
 
-  # 2. Создание релизной ветки и подготовка
   prepare-release:
     needs: checks
     runs-on: ubuntu-latest
@@ -68,7 +66,7 @@ jobs:
           docker tag $REGISTRY/$IMAGE_NAME:$VERSION $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
       - name: Login to Yandex Cloud Container Registry
-        uses: yc-actions/yc-cr-login@v1  # Используйте актуальный action
+        uses: yc-actions/yc-cr-login@v1
 
       - name: Push Docker images
         run: |
