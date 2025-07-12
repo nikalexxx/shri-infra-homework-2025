@@ -18,24 +18,24 @@ jobs:
       - name: Install Yandex Cloud CLI
         run: |
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-          echo "::add-path::$HOME/yandex-cloud/bin"
           echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+          export PATH="$HOME/yandex-cloud/bin:$PATH"
           $HOME/yandex-cloud/bin/yc --version
+
+      - name: Verify installation
+        run: |
+          echo "Current PATH: $PATH"
+          which yc
+          yc --version
 
       - name: Configure YC CLI
         run: |
           echo "${{ secrets.YC_SA_KEY }}" > key.json
-          $HOME/yandex-cloud/bin/yc config set service-account-key key.json
-          $HOME/yandex-cloud/bin/yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
-          $HOME/yandex-cloud/bin/yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
-          $HOME/yandex-cloud/bin/yc container registry configure-docker
+          yc config set service-account-key key.json
+          yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
+          yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+          yc container registry configure-docker
           rm -f key.json
-
-      - name: Verify YC CLI
-        run: |
-          echo "Current PATH: $PATH"
-          which yc || ls -la $HOME/yandex-cloud/bin
-          yc --version
 
       - name: Run lint and tests
         run: |
