@@ -21,7 +21,7 @@ jobs:
       - name: Login to Yandex Container Registry
         run: |
           echo "${{ secrets.YC_SERVICE_KEY }}" > key.json
-          docker login --username oauth --password-stdin cr.yandex <<< "$(cat key.json | jq -r .access_token)"
+          cat key.json | jq -r .access_token | docker login --username oauth --password-stdin cr.yandex
 
       - name: Pull and deploy image on server
         uses: appleboy/ssh-action@v0.1.7
@@ -31,8 +31,7 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
-            ACCESS_TOKEN=$(cat key.json | jq -r .access_token)
-            docker login --username oauth --password "$ACCESS_TOKEN" cr.yandex
+            cat key.json | jq -r .access_token | docker login --username oauth --password-stdin cr.yandex
             docker stop app || true
             docker rm app || true
             docker pull $REGISTRY:${VERSION}_latest
