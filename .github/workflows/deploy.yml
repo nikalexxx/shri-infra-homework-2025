@@ -18,13 +18,14 @@ jobs:
     permissions:
       issues: write
     steps:
-      - name: Check if image exists
+      - name: Setup gcloud SDK
         uses: 'gcloud-sdk-action@v1'
         with:
           credentials_json: '${{ secrets.YC_SA_KEY_JSON }}'
           project_id: 'yandex-cloud' # Это значение не используется, но обязательно
           region: 'ru-central1'
-        # Проверяем наличие тега _latest для указанной версии релиза
+
+      - name: Check if image exists
         run: |
           yc container image list --registry-id ${{ secrets.YC_REGISTRY_ID }} --repository-name ${{ env.IMAGE_NAME }} \
           --filter 'tags="${{ github.event.inputs.release_version }}_latest"' \
