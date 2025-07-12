@@ -31,7 +31,7 @@ jobs:
 
       - run: docker login cr.yandex -u oauth -p "${{ secrets.YC_OAUTH_TOKEN }}"
 
-      - name: Build & push image
+      - name: build & push image to container registry
         run: |
           docker build \
             -t $IMAGE:${{ inputs.version }}_fix${{ steps.calc.outputs.n }} \
@@ -39,14 +39,54 @@ jobs:
           docker push $IMAGE:${{ inputs.version }}_fix${{ steps.calc.outputs.n }}
           docker push $IMAGE:${{ inputs.version }}_latest
 
-      - name: Tag & push git tag
+      - name: tag & push git tag
         run: |
           git tag "${{ inputs.version }}_fix${{ steps.calc.outputs.n }}"
           git push --tags
+          
+      - name: collect commits since previous tag
+        id: commits
+        run: |
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          echo "prev_tag=${PREV}" >> $GITHUB_OUTPUT
 
-      - name: Comment issue
+          if [ -n "$PREV" ]; then
+            LOG=$(git log --pretty=format:'- %s' ${PREV}..HEAD)
+          else
+            LOG=$(git log --pretty=format:'- %s')
+          fi
+
+          echo "list<<EOF"       >> $GITHUB_OUTPUT
+          echo "$LOG"            >> $GITHUB_OUTPUT
+          echo "EOF"             >> $GITHUB_OUTPUT
+
+      - name: comment in release issue
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          gh issue comment --search "Release ${{ inputs.version }}" \
-            --body "**Фикс** $(date)\nтег \`${{ inputs.version }}_fix${{ steps.calc.outputs.n }}\`\nобраз \`$IMAGE:${{ inputs.version }}_fix${{ steps.calc.outputs.n }}\`"
+          REPO="${{ github.repository }}"
+          VERSION="${{ inputs.version }}"
+          FIXNUM="${{ steps.calc.outputs.n }}"
+          IMAGE="cr.yandex/${{ secrets.YC_REGISTRY }}/app:${VERSION}_fix${FIXNUM}"
+
+          ISSUE=$(gh issue list \
+                    --repo "$REPO" \
+                    --state all \
+                    --search "Release $VERSION" \
+                    --json number \
+                    -q '.[0].number')
+
+          if [ -n "$ISSUE" ]; then
+            BODY="$(cat <<EOF
+            **⚙️ Фикс **: $(date)
+            **Автор фикса:** ${{ github.actor }}
+            **Тег:** \`${VERSION}_fix${FIXNUM}\`
+            **Образ:** \`$IMAGE\`
+            **Коммиты с ${ { steps.commits.outputs.prev_tag } }:**
+              ${{ steps.commits.outputs.list }}
+            EOF
+            )"
+            gh issue comment "$ISSUE" --repo "$REPO" --body "$BODY"
+          else
+            echo "⚠️  Issue 'Release $VERSION' не найдена — комментарий не добавлен."
+          fi

@@ -33,7 +33,7 @@ jobs:
             docker stop app || true && docker rm app || true
             docker run -d --name app -p 80:3000 "$IMAGE"
 
-      - name: open deploy issue
+      - name: comment in release issue
         run: |
           REPO="${{ github.repository }}"
           VERSION="${{ inputs.version }}"
