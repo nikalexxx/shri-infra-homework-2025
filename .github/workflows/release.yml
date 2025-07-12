@@ -68,7 +68,7 @@ jobs:
 
       - name: Login to Yandex CR
         id: loginc-cr
-        uses: yc-actions/yc-cr-login@v1
+        uses: yc-actions/yc-cr-login@v3
         with:
           yc-iam-token: ${{ secrets.YC_IAM_TOKEN }}
 
