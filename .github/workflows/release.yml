@@ -14,12 +14,13 @@ jobs:
         with: { ref: main,
           fetch-depth: 0 }
 
-      - name: fetch full history
+      - name: sync main
+        run: git pull --ff-only origin main
+
+      - name: create release branch
         run: |
-          git fetch --prune --unshallow  origin "+refs/heads/*:refs/remotes/origin/*" \
-                                                "+refs/tags/*:refs/tags/*"
-          git checkout main
-          git pull --ff-only
+          git switch -c releases/${VERSION}
+          git push -u origin HEAD
 
       - name: set git identity
         run: |
@@ -33,10 +34,6 @@ jobs:
       - run: npm run lint
       - run: npm run test
 
-      - run: |
-          git switch -c releases/${VERSION}
-          git push -u origin HEAD
-
       - run: docker login cr.yandex -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }}
       - run: |
           docker build -t ${IMAGE}:${VERSION} -t ${IMAGE}:${VERSION}_latest .
@@ -48,7 +45,7 @@ jobs:
           echo "LAST_TAG=${LAST_TAG}" >> $GITHUB_ENV
           git tag ${VERSION}
           git push --tags
-      - name: Prepend CHANGELOG
+      - name: prepend CHANGELOG
         id: changelog
         run: |
           set -euo pipefail
@@ -74,7 +71,7 @@ jobs:
           echo "COMMITS<<EOF" >> "$GITHUB_OUTPUT"
           echo "${COMMITS}"   >> "$GITHUB_OUTPUT"
           echo "EOF"          >> "$GITHUB_OUTPUT"
-      - name: Open release issue
+      - name: open release issue
         run: |
           BODY=$(cat <<EOF
           **Дата:** $(date)
@@ -92,7 +89,7 @@ jobs:
             --label release
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-      - name: Merge back to main
+      - name: merge back to main
         run: |
           git fetch origin
           git switch main
