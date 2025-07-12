@@ -93,7 +93,6 @@ jobs:
           **Docker image:** ${{ env.REGISTRY }}/app:${{ github.event.inputs.release_version }}_latest
           **Deployed at:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
           **Deployed by:** ${{ github.actor }}
-          **Access URL:** http://${{ secrets.VM_IP }}:3000/hw/store
           EOF
           )
 
