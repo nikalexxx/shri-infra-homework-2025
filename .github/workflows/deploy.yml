@@ -1,9 +1,9 @@
-name: Deploy to Production
+name: Deploy
 on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Версия релиза для деплоя (например, 12 или 12_fix3)'
+        description: 'Версия релиза для деплоя'
         required: true
         type: string
 
@@ -11,19 +11,17 @@ jobs:
   verify-image:
     runs-on: ubuntu-latest
     env:
-      REGISTRY: cr.yandex/${{ secrets.REGISTRY_ID }}
+      REGISTRY: ${{ secrets.REGISTRY_ID }}
     steps:
       - name: Check image exists
         env:
           YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
         run: |
-          # Безопасная аутентификация
           echo "$YC_SA_KEY" | docker login \
             --username oauth \
             --password-stdin \
             cr.yandex
           
-          # Проверка существования образа
           IMAGE_TAG="${{ github.event.inputs.release_version }}_latest"
           if docker manifest inspect $REGISTRY/app:$IMAGE_TAG > /dev/null; then
             echo "Image $REGISTRY/app:$IMAGE_TAG exists"
@@ -36,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify-image
     env:
-      REGISTRY: cr.yandex/${{ secrets.REGISTRY_ID }}
+      REGISTRY: ${{ secrets.REGISTRY_ID }}
     steps:
       - name: Deploy to production server
         uses: appleboy/ssh-action@v1
@@ -45,27 +43,22 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # Безопасная аутентификация на сервере
             echo "${{ secrets.YC_SA_KEY }}" | docker login \
               --username oauth \
               --password-stdin \
               cr.yandex
             
-            # Получаем образ
             IMAGE_TAG="${{ github.event.inputs.release_version }}_latest"
             docker pull ${{ env.REGISTRY }}/app:$IMAGE_TAG
             
-            # Останавливаем и удаляем предыдущий контейнер
             sudo docker stop app || true
             sudo docker rm app || true
             
-            # Запускаем новый контейнер
             sudo docker run -d \
               --name app \
               -p 3000:3000 \
               ${{ env.REGISTRY }}/app:$IMAGE_TAG
             
-            # Проверяем статус
             sleep 5
             sudo docker ps --filter "name=app" --format "table {{.Names}}\t{{.Status}}"
             echo "Приложение доступно по адресу: http://$(curl -s ifconfig.me):3000/hw/store"
