@@ -63,17 +63,18 @@ jobs:
           echo "EOF"               >> $GITHUB_OUTPUT
       - name: Open release issue
         run: |
+          BODY=$(cat <<'EOF'
+          **Дата:** $(date)
+          **Версия:** ${{ env.VERSION }}
+          **Коммиты:**
+          ${{ steps.changelog.outputs.COMMITS }}
+          
+          **Образ:** `cr.yandex/${{ secrets.YC_REGISTRY }}/app:${{ env.VERSION }}`
+          EOF
+          )
           gh issue create \
             --title "Release ${VERSION}" \
-            --body "$(cat <<EOF
-      **Дата:** $(date)
-      **Версия:** ${VERSION}
-      **Коммиты:**
-      ${{ steps.changelog.outputs.COMMITS }}
-
-      **Образ:** \`${IMAGE}:${VERSION}\`
-      EOF
-      )" \
-      --label release
+            --body "$BODY" \
+            --label release
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
