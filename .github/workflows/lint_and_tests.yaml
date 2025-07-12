@@ -1,0 +1,47 @@
+name: Pull Requests - Lint and Test
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+
+jobs:
+  lint:
+    name: "Lint Code"
+    runs-on: ubuntu-latest 
+    steps:
+      - name: "Uses checkout code"
+        uses: actions/checkout@v2
+
+      - name: "Uses setup node.js"
+        uses: actions/setup-node@v2
+        with:
+          node-version: 20
+
+      - name: "Start download dependencies"
+        run: npm ci
+
+      - name: "Run linter"
+        run: npm run lint
+
+
+  test:
+    name: "Test Code"
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Uses checkout code"
+        uses: actions/checkout@v2
+
+      - name: "Uses setup node.js"
+        uses: actions/setup-node@v2
+        with:
+          node-version: 20
+
+      - name: "Start download dependencies"
+        run: npm ci
+      
+      - name: "Run tests"
+        run: npm run test
+
