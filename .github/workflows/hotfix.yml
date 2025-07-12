@@ -6,37 +6,47 @@ on:
         description: "Базовая версия релиза (например 12)"
         required: true
 
-env:
-  IMAGE: cr.yandex/${{ secrets.YC_REGISTRY }}/app
-
 jobs:
   fix:
     runs-on: ubuntu-latest
+    env:
+      IMAGE: cr.yandex/${{ secrets.YC_REGISTRY }}/app
     steps:
       - uses: actions/checkout@v4
-        with: { ref: releases/${{ inputs.version }} }
+        with:
+          ref: releases/${{ inputs.version }}
 
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: 'npm' }
-      - run: npm ci && npm run lint && npm run test
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
 
       - name: calc fix number
         id: calc
-        run: echo "n=$(( ${{ github.run_number }} ))" >> $GITHUB_OUTPUT
+        run: echo "n=$(( ${{ github.run_number }} ))" >> "$GITHUB_OUTPUT"
 
-      - run: docker login cr.yandex -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }}
-      - run: |
-          docker build -t ${IMAGE}:${{ inputs.version }}_fix${{ steps.calc.outputs.n }} \
-                       -t ${IMAGE}:${{ inputs.version }}_latest .
-          docker push ${IMAGE}:${{ inputs.version }}_fix${{ steps.calc.outputs.n }}
-          docker push ${IMAGE}:${{ inputs.version }}_latest
+      - run: docker login cr.yandex -u oauth -p "${{ secrets.YC_OAUTH_TOKEN }}"
 
-      - run: |
-          git tag ${{
-            inputs.version }}_fix${{ steps.calc.outputs.n }}
+      - name: Build & push image
+        run: |
+          docker build \
+            -t $IMAGE:${{ inputs.version }}_fix${{ steps.calc.outputs.n }} \
+            -t $IMAGE:${{ inputs.version }}_latest .
+          docker push $IMAGE:${{ inputs.version }}_fix${{ steps.calc.outputs.n }}
+          docker push $IMAGE:${{ inputs.version }}_latest
+
+      - name: Tag & push git tag
+        run: |
+          git tag "${{ inputs.version }}_fix${{ steps.calc.outputs.n }}"
           git push --tags
-      - name: comment issue
+
+      - name: Comment issue
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           gh issue comment --search "Release ${{ inputs.version }}" \
-            --body "**Фикс** $(date)\nтег \`${inputs.version}_fix${{ steps.calc.outputs.n }}\`\nобраз \`${IMAGE}:${{ inputs.version }}_fix${{ steps.calc.outputs.n }}\`"
-        env: { GH_TOKEN: ${{ secrets.GH_TOKEN }} }
+            --body "**Фикс** $(date)\nтег \`${{ inputs.version }}_fix${{ steps.calc.outputs.n }}\`\nобраз \`$IMAGE:${{ inputs.version }}_fix${{ steps.calc.outputs.n }}\`"
