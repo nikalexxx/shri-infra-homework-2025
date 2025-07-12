@@ -36,6 +36,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git checkout -b releases/${{ env.VERSION }}
+          git push origin releases/${{ env.VERSION }}
 
       - name: Save release tag to file (for reuse)
         run: echo "${VERSION}" > version.txt
