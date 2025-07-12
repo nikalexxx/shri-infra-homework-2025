@@ -1,14 +1,19 @@
 name: release
 on:
+  push:
+    tags:
+      - 'releases/*'
   workflow_dispatch: {}
-
-env:
-  VERSION: ${{ github.run_number }}
-  IMAGE:   cr.yandex/${{ secrets.YC_REGISTRY }}/app
 
 jobs:
   build-release:
     runs-on: ubuntu-latest
+
+    env:
+      VERSION_RAW: ${{ github.event_name == 'workflow_dispatch'
+        && inputs.version || github.ref_name }}
+      IMAGE: cr.yandex/${{ secrets.YC_REGISTRY }}/app
+
     steps:
       - uses: actions/checkout@v4
         with: { ref: main,
@@ -17,7 +22,13 @@ jobs:
       - name: sync main
         run: git pull --ff-only origin main
 
+      - name: normalize version
+        run: |
+          VER=${VERSION_RAW#releases/}
+          echo "VERSION=$VER" >>"$GITHUB_ENV"
+
       - name: create release branch
+        if: github.event_name == 'workflow_dispatch'
         run: |
           git switch -c releases/${VERSION}
           git push -u origin HEAD
@@ -40,11 +51,12 @@ jobs:
           docker push ${IMAGE}:${VERSION}
           docker push ${IMAGE}:${VERSION}_latest
 
-      - run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          echo "LAST_TAG=${LAST_TAG}" >> $GITHUB_ENV
-          git tag ${VERSION}
-          git push --tags
+      - name: create git tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git tag releases/${VERSION}
+          git push origin releases/${VERSION}
+
       - name: prepend CHANGELOG
         id: changelog
         run: |
@@ -71,6 +83,7 @@ jobs:
           echo "COMMITS<<EOF" >> "$GITHUB_OUTPUT"
           echo "${COMMITS}"   >> "$GITHUB_OUTPUT"
           echo "EOF"          >> "$GITHUB_OUTPUT"
+
       - name: open release issue
         run: |
           BODY=$(cat <<EOF
@@ -89,7 +102,9 @@ jobs:
             --label release
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
       - name: merge back to main
+        if: github.event_name == 'workflow_dispatch'
         run: |
           git fetch origin
           git switch main
