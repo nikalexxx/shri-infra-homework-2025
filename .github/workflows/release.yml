@@ -93,5 +93,5 @@ jobs:
 
         run: |
           gh issue create \
-            --title "Release ${{ env.VERSION }}" \
+            --title "${{ env.VERSION }}" \
             --body "**Дата:** $(date)\n**Автор:** ${{ github.actor }}\n**Версия:** ${{ env.VERSION }}\n\n**Коммиты:**\n${COMMITS}\n\nDocker: cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}"
