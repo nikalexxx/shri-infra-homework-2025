@@ -115,7 +115,7 @@ jobs:
             - name: 📊 Добавление комментария в GitHub Issue
               uses: peter-evans/create-or-update-comment@v4
               with:
-                  token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+                  token: ${{ secrets.GH_TOKEN }}  
                   issue-number: ${{ steps.find_issue.outputs.issue_number }}
                   body: |
                       🌐 Релиз **${{ github.event.inputs.version }}** выкачан в прод  
