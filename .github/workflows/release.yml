@@ -1,0 +1,126 @@
+name: Create Release
+
+# Триггер: ручной запуск
+on:
+  workflow_dispatch:
+
+# Переменные окружения, доступные во всех задачах
+env:
+  REGISTRY: cr.yandex
+  IMAGE_NAME: app
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Права доступа для задачи. Нужны для создания тегов, веток и Issue.
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Получаем всю историю, чтобы можно было найти предыдущий тег
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Set release version
+        id: set_version
+        # Версия релиза - это номер запуска этого воркфлоу
+        run: echo "RELEASE_VERSION=${{ github.run_number }}" >> $GITHUB_ENV
+
+      - name: Login to Yandex Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}.cr.yandex
+          username: json_key
+          password: ${{ secrets.YC_SA_KEY_JSON }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
+            ${{ env.REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Get previous tag
+        id: previoustag
+        # Ищем самый последний тег в истории коммитов
+        run: echo "TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        # Генерируем список коммитов от предыдущего тега до текущего момента
+        run: |
+          CHANGELOG_BODY=$(git log ${{ steps.previoustag.outputs.TAG }}..HEAD --pretty=format:"* %s (%h) by @%an")
+          # Преобразуем многострочную переменную в одну строку для передачи между шагами
+          CHANGELOG_BODY="${CHANGELOG_BODY//'%'/'%25'}"
+          CHANGELOG_BODY="${CHANGELOG_BODY//$'\n'/'%0A'}"
+          CHANGELOG_BODY="${CHANGELOG_BODY//$'\r'/'%0D'}"
+          echo "BODY=$CHANGELOG_BODY" >> $GITHUB_OUTPUT
+
+      - name: Create release branch
+        run: git checkout -b releases/${{ env.RELEASE_VERSION }} && git push origin releases/${{ env.RELEASE_VERSION }}
+
+      - name: Update CHANGELOG.md
+        run: |
+          echo -e "# Release ${{ env.RELEASE_VERSION }}\n\n${{ steps.changelog.outputs.BODY }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git add CHANGELOG.md
+          git commit -m "docs: update CHANGELOG.md for release ${{ env.RELEASE_VERSION }}"
+          git push
+
+      - name: Create Git Tag
+        run: |
+          git tag ${{ env.RELEASE_VERSION }}
+          git push origin ${{ env.RELEASE_VERSION }}
+
+      - name: Create Release Issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const version = process.env.RELEASE_VERSION;
+            const changelog = process.env.CHANGELOG_BODY;
+            const registry_id = process.env.YC_REGISTRY_ID;
+            const image_name = process.env.IMAGE_NAME;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release v${version}`,
+              body: `
+                ## Release v${version}
+                **Date:** ${new Date().toUTCString()}
+                **Author:** @${context.actor}
+                **Version:** ${version}
+            
+                ### Commits:
+                ${changelog}
+            
+                ### Docker Image:
+                \`cr.yandex/${registry_id}/${image_name}:${version}\`
+              `
+            });
+        env:
+          RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+          CHANGELOG_BODY: ${{ steps.changelog.outputs.BODY }}
+          YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}

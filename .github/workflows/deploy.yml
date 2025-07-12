@@ -1,0 +1,89 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to deploy (e.g., 1, 2, 3)'
+        required: true
+
+env:
+  REGISTRY: cr.yandex
+  IMAGE_NAME: app
+  CONTAINER_NAME: shri-app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Check if image exists
+        uses: 'gcloud-sdk-action@v1'
+        with:
+          credentials_json: '${{ secrets.YC_SA_KEY_JSON }}'
+          project_id: 'yandex-cloud' # Это значение не используется, но обязательно
+          region: 'ru-central1'
+        # Проверяем наличие тега _latest для указанной версии релиза
+        run: |
+          yc container image list --registry-id ${{ secrets.YC_REGISTRY_ID }} --repository-name ${{ env.IMAGE_NAME }} \
+          --filter 'tags="${{ github.event.inputs.release_version }}_latest"' \
+          --format=json | jq -e '.[0]' > /dev/null || (echo "::error::Image for release ${{ github.event.inputs.release_version }} with _latest tag not found!" && exit 1)
+          echo "Image found. Proceeding with deployment."
+
+      - name: Deploy to VM via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VM_PUBLIC_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Логинимся в Yandex Container Registry
+            docker login \
+              --username json_key \
+              --password '${{ secrets.YC_SA_KEY_JSON }}' \
+              ${{ env.REGISTRY }}.cr.yandex
+
+            # Скачиваем последнюю версию образа
+            docker pull ${{ env.REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:latest
+
+            # Останавливаем и удаляем старый контейнер, если он существует
+            docker stop ${{ env.CONTAINER_NAME }} || true
+            docker rm ${{ env.CONTAINER_NAME }} || true
+
+            # Запускаем новый контейнер
+            docker run -d -p 3000:3000 \
+              --name ${{ env.CONTAINER_NAME }} \
+              --restart always \
+              ${{ env.REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Add deployment comment to Issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const release_version = process.env.RELEASE_VERSION;
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              title: `Release v${release_version}`
+            });
+            if (issues.length === 0) {
+              core.setFailed(`Could not find an issue for release ${release_version}`);
+              return;
+            }
+            const issue_number = issues[0].number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue_number,
+              body: `
+                ### 🚀 Deployment Successful
+                **Date:** ${new Date().toUTCString()}
+                **Deployed by:** @${context.actor}
+                **Release:** v${release_version} has been deployed to production.
+              `
+            });
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.release_version }}

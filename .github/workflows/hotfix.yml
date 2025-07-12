@@ -1,0 +1,108 @@
+name: Create Hotfix
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to fix (e.g., 1, 2, 3)'
+        required: true
+
+env:
+  REGISTRY: cr.yandex
+  IMAGE_NAME: app
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Checkout specific release branch
+        uses: actions/checkout@v4
+        with:
+          ref: releases/${{ github.event.inputs.release_version }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Set fix version
+        id: set_version
+        run: echo "FIX_VERSION=${{ github.run_number }}" >> $GITHUB_ENV
+
+      - name: Login to Yandex Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}.cr.yandex
+          username: json_key
+          password: ${{ secrets.YC_SA_KEY_JSON }}
+
+      - name: Build and push Docker image for fix
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.release_version }}_fix${{ env.FIX_VERSION }}
+            ${{ env.REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.release_version }}_latest
+            ${{ env.REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Create Git Tag for fix
+        run: |
+          git tag ${{ github.event.inputs.release_version }}_fix${{ env.FIX_VERSION }}
+          git push origin ${{ github.event.inputs.release_version }}_fix${{ env.FIX_VERSION }}
+
+      - name: Find Release Issue and add comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const release_version = process.env.RELEASE_VERSION;
+            const fix_version = process.env.FIX_VERSION;
+            const registry_id = process.env.YC_REGISTRY_ID;
+            const image_name = process.env.IMAGE_NAME;
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'release', // Можно добавить лейбл "release" к Issue для удобного поиска
+              title: `Release v${release_version}`
+            });
+
+            if (issues.length === 0) {
+              core.setFailed(`Could not find an issue for release ${release_version}`);
+              return;
+            }
+
+            const issue_number = issues[0].number;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue_number,
+              body: `
+                ### 🔥 Hotfix Applied
+                **Date:** ${new Date().toUTCString()}
+                **Author:** @${context.actor}
+                **Fix Version:** ${release_version}_fix${fix_version}
+            
+                **Docker Image:**
+                \`cr.yandex/${registry_id}/${image_name}:${release_version}_fix${fix_version}\`
+              `
+            });
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.release_version }}
+          FIX_VERSION: ${{ env.FIX_VERSION }}
+          YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
