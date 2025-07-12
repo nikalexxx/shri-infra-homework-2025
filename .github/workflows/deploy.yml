@@ -3,87 +3,114 @@ name: Deploy to Prod
 description: "Выкачка образа на прод-сервер через SSH"
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        required: true
-        description: "Версия Docker-образа для выкатки в прод"
+    workflow_dispatch:
+        inputs:
+            version:
+                required: true
+                description: "Версия Docker-образа для выкатки в прод"
 
 jobs:
-  deploy:
-    name: 🚀 Deploy version to production server
-    runs-on: ubuntu-latest
-    env:
-      REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
-      IMAGE_NAME: app
-      VERSION: ${{ github.event.inputs.version }}
+    deploy:
+        name: 🚀 Deploy version to production server
+        runs-on: ubuntu-latest
+        env:
+            REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+            IMAGE_NAME: app
+            VERSION: ${{ github.event.inputs.version }}
 
-    steps:
-      - name: 📃 Лог версии и реестра
-        run: |
-          echo "Будем деплоить версию: $VERSION"
-          echo "Из реестра: $REGISTRY/$IMAGE_NAME"
+        steps:
+            - name: 📃 Лог версии и реестра
+              run: |
+                  echo "Будем деплоить версию: $VERSION"
+                  echo "Из реестра: $REGISTRY/$IMAGE_NAME"
 
-      - name: 🧰 Установка Yandex CLI
-        run: |
-          curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+            - name: 🧰 Установка Yandex CLI
+              run: |
+                  curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+                  echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
 
-      - name: Authenticate YC CLI
-        run: |
-          yc config set token "${{ secrets.YC_OAUTH_TOKEN }}"
-          yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
-          yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
+            - name: Authenticate YC CLI
+              run: |
+                  yc config set token "${{ secrets.YC_OAUTH_TOKEN }}"
+                  yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
+                  yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
 
-      - name: 🔗 Конфигурация Docker через yc CLI
-        run: yc container registry configure-docker
+            - name: 🔗 Конфигурация Docker через yc CLI
+              run: yc container registry configure-docker
 
-      - name: ✨ Проверка доступности образа в YCR
-        run: |
-          echo "Проверяем наличие тега ${VERSION}_latest в YCR..."
-          docker pull $REGISTRY/$IMAGE_NAME:${VERSION}_latest >/dev/null || {
-            echo "❌ Образ с тегом ${VERSION}_latest не найден в Container Registry"
-            exit 1
-          }
-          echo "✅ Образ найден и успешно скачан."
+            - name: ✨ Проверка доступности образа в YCR
+              run: |
+                  echo "Проверяем наличие тега ${VERSION}_latest в YCR..."
+                  docker pull $REGISTRY/$IMAGE_NAME:${VERSION}_latest >/dev/null || {
+                    echo "❌ Образ с тегом ${VERSION}_latest не найден в Container Registry"
+                    exit 1
+                  }
+                  echo "✅ Образ найден и успешно скачан."
 
-      - name: 🚚 Подключение к серверу и деплой
-        uses: appleboy/ssh-action@v0.1.7
-        with:
-          host: ${{ secrets.VM_IP }}
-          username: ${{ secrets.VM_SSH_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          envs: IMAGE_NAME,REGISTRY,VERSION
-          script: |
-            echo "=== Начинаем деплой на сервер ==="
+            - name: 🚚 Подключение к серверу и деплой
+              uses: appleboy/ssh-action@v0.1.7
+              with:
+                  host: ${{ secrets.VM_IP }}
+                  username: ${{ secrets.VM_SSH_USER }}
+                  key: ${{ secrets.VM_SSH_KEY }}
+                  envs: IMAGE_NAME,REGISTRY,VERSION
+                  script: |
+                      echo "=== Начинаем деплой на сервер ==="
 
-            echo "1. Получение YC access token..."
-            echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
-            ACCESS_TOKEN=$(cat key.json | jq -r .access_token)
+                      echo "1. Получение YC access token..."
+                      echo '${{ secrets.YC_SERVICE_KEY }}' > key.json
+                      ACCESS_TOKEN=$(cat key.json | jq -r .access_token)
 
-            echo "2. Логинимся в Docker Registry..."
-            echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
+                      echo "2. Логинимся в Docker Registry..."
+                      echo "$ACCESS_TOKEN" | docker login --username oauth --password-stdin cr.yandex
 
-            echo "3. Остановка и удаление предыдущего контейнера..."
-            docker stop app || true
-            docker rm app || true
+                      echo "3. Остановка и удаление предыдущего контейнера..."
+                      docker stop app || true
+                      docker rm app || true
 
-            echo "4. Пулл образа..."
-            docker pull $REGISTRY/$IMAGE_NAME:${VERSION}_latest
+                      echo "4. Пулл образа..."
+                      docker pull $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
-            echo "5. Запуск контейнера..."
-            docker run -d --name app -p 80:3000 $REGISTRY/$IMAGE_NAME:${VERSION}_latest
+                      echo "5. Запуск контейнера..."
+                      docker run -d --name app -p 80:3000 $REGISTRY/$IMAGE_NAME:${VERSION}_latest
 
-            echo "6. Проверка контейнера..."
-            docker ps | grep app
-            echo "✅ Деплой завершён."
+                      echo "6. Проверка контейнера..."
+                      docker ps | grep app
+                      echo "✅ Деплой завершён."
 
-      - name: 📊 Добавление комментария в GitHub Issue
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          issue-number: ${{ github.event.inputs.version }}
-          body: |
-            🌐 Релиз **${{ github.event.inputs.version }}** выкачан в прод  
-            📅 Дата: $(date +%F)  
-            👤 Автор: @${{ github.actor }}  
-            📦 Образ: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest`
+            - name: Найти номер issue по заголовку (версии)
+              id: find_issue
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  # Проверяем, установлен ли gh
+                  if ! command -v gh &> /dev/null
+                  then
+                  echo "gh cli не установлен, ставим..."
+                  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+                  sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+                  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+                  sudo apt update
+                  sudo apt install gh -y
+                  fi
+
+                  ISSUE_NUMBER=$(gh issue list --repo ${{ github.repository }} --state open --json number,title --limit 100 \
+                  | jq -r '.[] | select(.title=="'${{ github.event.inputs.version }}'") | .number')
+
+                  if [ -z "$ISSUE_NUMBER" ]; then
+                  echo "Ошибка: Issue с заголовком '${{ github.event.inputs.version }}' не найдено"
+                  exit 1
+                  fi
+
+                  echo "Найден issue номер: $ISSUE_NUMBER"
+                  echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTP
+
+            - name: 📊 Добавление комментария в GitHub Issue
+              uses: peter-evans/create-or-update-comment@v4
+              with:
+                  issue-number: ${{ github.event.inputs.version }}
+                  body: |
+                      🌐 Релиз **${{ github.event.inputs.version }}** выкачан в прод  
+                      📅 Дата: $(date +%F)  
+                      👤 Автор: @${{ github.actor }}  
+                      📦 Образ: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest`
