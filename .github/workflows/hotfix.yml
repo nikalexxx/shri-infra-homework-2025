@@ -39,7 +39,7 @@ jobs:
           TAG1=$REG/app:${{ inputs.release }}_fix${{ steps.ver.outputs.FIX }}
           TAG2=$REG/app:${{ inputs.release }}_latest
           docker build -t $TAG1 -t $TAG2 .
-          docker login -u iam -p "${{ secrets.YC_IAM_TOKEN }}" cr.yandex
+          docker login -u iam -p "${{ secrets.YC_OAUTH_TOKEN }}" cr.yandex
           docker push --all-tags $REG/app
 
       # git-tag v<rel>_fix<run>
