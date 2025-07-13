@@ -17,18 +17,18 @@ jobs:
       RELEASE_VERSION: ${{ github.event.inputs.version }}
     steps:
       - name: Deploy via SSH
-  uses: appleboy/ssh-action@v1.0.3
-  with:
-    host: ${{ secrets.VM_IP }}
-    username: ubuntu
-    key: ${{ secrets.VM_SSH_KEY }}
-    script: |
-      echo "REGISTRY: cr.yandex/crpfnnn98v057d07iqev"
-      echo "IMAGE_NAME: app"
-      echo "RELEASE_VERSION: ${{ github.event.inputs.version }}"
-      echo "IMAGE TO RUN: cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}"
-      docker login -u oauth -p ${{ secrets.Y_CR_TOKEN }} cr.yandex
-      docker pull cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}
-      docker stop shri-infra || true
-      docker rm shri-infra || true
-      docker run -d --name shri-infra -p 3000:3000 cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ubuntu
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            echo "REGISTRY: cr.yandex/crpfnnn98v057d07iqev"
+            echo "IMAGE_NAME: app"
+            echo "RELEASE_VERSION: ${{ github.event.inputs.version }}"
+            echo "IMAGE TO RUN: cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}"
+            docker login -u oauth -p ${{ secrets.Y_CR_TOKEN }} cr.yandex
+            docker pull cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}
+            docker stop shri-infra || true
+            docker rm shri-infra || true
+            docker run -d --name shri-infra -p 3000:3000 cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}
