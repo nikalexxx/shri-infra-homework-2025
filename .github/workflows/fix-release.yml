@@ -54,29 +54,29 @@ jobs:
           git tag ${RELEASE_VERSION}_fix${FIX_NUMBER}
           git push origin ${RELEASE_VERSION}_fix${FIX_NUMBER}
 
+      - name: Get previous tag and commits
+        id: commits
+        run: |
+          git fetch --tags
+          TAG=$(git tag --sort=-creatordate | grep -E "^${RELEASE_VERSION}(_fix[0-9]+)?$" | sed -n 2p)
+          echo "PREV_TAG=$TAG" >> $GITHUB_OUTPUT
+          if [ -z "$TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" releases/$RELEASE_VERSION)
+          else
+            COMMITS=$(git log $TAG..releases/$RELEASE_VERSION --pretty=format:"- %s (%h)")
+          fi
+          echo "commits=$COMMITS" >> $GITHUB_OUTPUT
+
       - name: Find release issue number
         id: find_issue
         run: |
           ISSUE_NUMBER=$(gh issue list --state open --search "Release $RELEASE_VERSION in:title" --json number -q '.[0].number')
-          echo "::set-output name=ISSUE_NUMBER::$ISSUE_NUMBER"
+          echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get previous tag
-        id: prev_tag
-        run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          echo "::set-output name=PREV_TAG::$PREV_TAG"
-
-      - name: Generate commit list
-        id: commits
-        run: |
-          if [ -z "${{ steps.prev_tag.outputs.PREV_TAG }}" ]; then
-            COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD)
-          else
-            COMMITS=$(git log ${{ steps.prev_tag.outputs.PREV_TAG }}..HEAD --pretty=format:"- %s (%h)")
-          fi
-          echo "::set-output name=commits::$COMMITS"
+      - name: Debug issue number
+        run: echo "ISSUE_NUMBER=${{ steps.find_issue.outputs.ISSUE_NUMBER }}"
 
       - name: Add comment to release issue
         env:
