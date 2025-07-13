@@ -1,0 +1,81 @@
+name: Release
+
+on: workflow_dispatch
+
+env:
+  CR: cr.yandex/crpvn4spj16vplr31itj
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.lint.outcome == 'success' && steps.test.outcome == 'success' }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+         node-version: 18
+      - run: npm ci
+
+      - id: lint
+        run: npm run lint
+
+      - id: test
+        run: npm test
+
+  cut-branch:
+    needs: check
+    if: needs.check.outputs.ok == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Создать release-ветку
+        run: |
+          ver=${{ github.run_number }}
+          git config user.name github-actions
+          git config user.email actions@github.com
+          git checkout -b releases/${ver}
+          git push origin releases/${ver}
+
+  build-push:
+    needs: cut-branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Собрать image и затегать
+        run: |
+          ver=${{ github.run_number }}
+          docker build -t $CR/app:${ver} -t $CR/app:${ver}_latest .
+      - name: Логин в Yandex CR
+        run: echo ${{ secrets.YC_OAUTH_TOKEN }} | docker login --username oauth --password-stdin $CR
+      - name: Push images
+        run: |
+          docker push $CR/app:${ver}
+          docker push $CR/app:${ver}_latest
+
+  tag-and-changelog:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Создать git‑тег
+        run: |
+          ver=${{ github.run_number }}
+          git tag -a ${ver} -m "Release ${ver}"
+          git push origin ${ver}
+      - name: Обновить CHANGELOG.md и создать Issue
+        run: |
+          ver=${{ github.run_number }}
+          last=$(git describe --tags --abbrev=0 HEAD^)
+          commits=$(git log $last..HEAD --pretty=format:'- %s')
+          (
+            echo "## ${ver} — $(date +'%Y-%m-%d')"
+            echo "${commits}"
+          ) > tmp.md
+          cat tmp.md CHANGELOG.md > CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "chore: update CHANGELOG for ${ver}"
+          git push origin releases/${ver}
+          gh issue create \
+            --title "Release ${ver}" \
+            --body "Дата: $(date +'%Y-%m-%d')\nАвтор: $GITHUB_ACTOR\nВерсия: ${ver}\n\nКоммиты:\n${commits}\n\nDocker: $CR/app:${ver}"

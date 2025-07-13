@@ -1,0 +1,42 @@
+name: Deploy to Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Номер релиза'
+        required: true
+
+env:
+  CR: cr.yandex/crpvn4spj16vplr31itj
+  VM: 158.160.185.9
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Проверить наличие образа
+        run: |
+          ver=${{ github.event.inputs.version }}
+          if ! docker manifest inspect $CR/app:${ver}_latest; then
+            echo "Image not found" >&2
+            exit 1
+          fi
+
+      - name: Деплой через SSH
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ env.VM }}
+          username: ubuntu
+          key: ${{ secrets.VM_SSH_KEY }}
+          script:
+            docker login --username oauth --password "$(echo ${{ secrets.YC_OAUTH_TOKEN }})" $CR
+            docker pull $CR/app:${ver}_latest
+            docker stop app || true
+            docker rm app  || true
+            docker run -d --restart always -p 80:3000 --name app $CR/app:${ver}_latest
+
+      - name: Комментируем Issue
+        run: |
+          gh issue comment ${{ github.event.inputs.version }} \
+            --body "Деплой в прод: $(date +'%Y-%m-%d')\nАвтор: $GITHUB_ACTOR"

@@ -1,0 +1,49 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Номер релиза'
+        required: true
+
+env:
+  CR: cr.yandex/crpvn4spj16vplr31itj
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  build-push:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Сборка и пуш fix‑образа
+        run: |
+          ver=${{ github.event.inputs.version }}
+          fix=${{ github.run_number }}
+          docker build -t $CR/app:${ver}_fix${fix} -t $CR/app:${ver}_latest .
+          echo ${{ secrets.YC_OAUTH_TOKEN }} | docker login --username oauth --password-stdin $CR
+          docker push $CR/app:${ver}_fix${fix}
+          docker push $CR/app:${ver}_latest
+
+  tag-comment:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Создать fix‑тег и прокомментировать Issue
+        run: |
+          ver=${{ github.event.inputs.version }}
+          fix=${{ github.run_number }}
+          tag=${ver}_fix${fix}
+          git tag -a ${tag} -m "Fix ${tag}"
+          git push origin ${tag}
+          gh issue comment ${ver} \
+            --body "Дата фикса: $(date +'%Y-%m-%d')\nАвтор: $GITHUB_ACTOR\nКоммиты:\n$(git log ${ver}_fix$((fix-1))..HEAD --oneline)\nDocker: $CR/app:${ver}_fix${fix}"
