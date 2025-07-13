@@ -1,4 +1,4 @@
-name: Deploy to Production
+name: Deploy
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check image exists in Yandex Registry
+      - name: Check if Docker image exists
         env:
           YC_TOKEN: ${{ secrets.YC_OAUTH_TOKEN }}
           IMAGE_TAG: ${{ inputs.release }}_latest
@@ -26,24 +26,17 @@ jobs:
           echo "Checking for image: $IMAGE_NAME:$IMAGE_TAG"
 
           RESPONSE=$(curl -s -H "Authorization: Bearer $YC_TOKEN" \
-          -X POST \
-          -H "Content-Type: application/json" \
-          -d '{
-              "pageSize": 1,
-              "filter": "name == \"'$IMAGE_NAME'\" AND tags.any(t, t == \"'$IMAGE_TAG'\")",
-              "registryId": "'"$REGISTRY_ID"'"
-          }' \
-          https://container-registry.api.cloud.yandex.net/container-registry/v1/images:search)
+            "https://container-registry.api.cloud.yandex.net/container-registry/v1/images?registryId=$REGISTRY_ID&name=$IMAGE_NAME&tag=$IMAGE_TAG")
 
-          echo "Registry search response: $RESPONSE"
+          echo "Registry response: $RESPONSE"
 
-          FOUND=$(echo "$RESPONSE" | grep "\"tag\": \"$IMAGE_TAG\"" || true)
+          IMAGE_ID=$(echo "$RESPONSE" | jq -r '.images[0].id // empty')
 
-          if [ -z "$FOUND" ]; then
-          echo "❌ Image '$IMAGE_NAME:$IMAGE_TAG' not found in registry"
-          exit 1
+          if [ -z "$IMAGE_ID" ]; then
+            echo "Image '$IMAGE_NAME:$IMAGE_TAG' not found in registry"
+            exit 1
           else
-          echo "✅ Image found"
+            echo "Image exists: ID = $IMAGE_ID"
           fi
 
       - name: Deploy via SSH
@@ -87,7 +80,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ steps.find_issue.outputs.number }}
           body: |
-            Деплой релиза
+            Прод релиз выкачан
 
             - Дата: ${{ steps.date.outputs.value }}
             - Запустил: @${{ github.actor }}
