@@ -111,36 +111,36 @@ jobs:
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          const version = process.env.VERSION;
-          const commits = process.env.COMMITS;
-          const actor = context.actor;
-          const date = new Date().toISOString().split("T")[0];
-          const commentBody = `
-          🔧 Выпущен фикс для версии **${version}**.
-            **Дата:** ${date}
-            **Автор:** ${actor}
-            **Коммиты:**
-            ${commits}
-          `;
+          script: |
+            const version = process.env.VERSION;
+            const commits = process.env.COMMITS;
+            const actor = context.actor;
+            const date = new Date().toISOString().split("T")[0];
+            const commentBody = `
+            🔧 Выпущен фикс для версии **${version}**.
+              **Дата:** ${date}
+              **Автор:** ${actor}
+              **Коммиты:**
+              ${commits}
+            `;
 
-          const { data: issues } = await github.rest.issues.listForRepo({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            state: 'open',
-            per_page: 100,
-          });
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
 
-          const issue = issues.find(issue => issue.title === `Релиз ${version}`);
+            const issue = issues.find(issue => issue.title === `Релиз ${version}`);
 
-          if (!issue) {
-            core.setFailed(`Не удалось найти issue с заголовком "Релиз ${version}"`);
-            return;
-          }
+            if (!issue) {
+              core.setFailed(`Не удалось найти issue с заголовком "Релиз ${version}"`);
+              return;
+            }
 
-          await github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: issue.number,
-            body: commentBody
-          });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: commentBody
+            });
