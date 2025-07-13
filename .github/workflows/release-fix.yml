@@ -2,7 +2,7 @@ name: release-fix
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
 
 env:
   RELEASE_BRANCH: releases/${{ github.event.inputs.release-version }}
