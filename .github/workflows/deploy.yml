@@ -73,7 +73,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ steps.find_issue.outputs.number }}
           body: |
-            Прод релиз выкачан
+            Релиз развернут
 
             - Дата: ${{ steps.date.outputs.value }}
             - Запустил: @${{ github.actor }}
