@@ -74,7 +74,7 @@ jobs:
           git commit -m "Update CHANGELOG for v${{ env.RELEASE_VERSION }}"
           git push origin HEAD:releases/${{ env.RELEASE_VERSION }}
 
-            - name: Получить предыдущий тег и коммиты
+      - name: Получить предыдущий тег и коммиты
         id: changelog
         run: |
           git fetch --tags
@@ -107,4 +107,3 @@ jobs:
         with:
           title: "Release ${{ env.RELEASE_VERSION }}"
           content-filepath: ./issue_body.txt
-
