@@ -18,7 +18,7 @@ jobs:
           IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
         run: |
           echo "IMAGE = $IMAGE"
-          docker login cr.yandex -u oauth -p '${{ secrets.YC_OAUTH_TOKEN }}'
+          docker login cr.yandex -u iam -p '${{ secrets.YC_OAUTH_TOKEN }}'
           docker manifest inspect "$IMAGE" >/dev/null
 
       # 2. SSH на ВМ → pull → restart контейнера
@@ -32,7 +32,7 @@ jobs:
             IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest"
 
             echo "Deploying $IMAGE"
-            docker login cr.yandex -u oauth -p '${{ secrets.YC_OAUTH_TOKEN }}'
+            docker login cr.yandex -u iam -p '${{ secrets.YC_OAUTH_TOKEN }}'
             docker pull "$IMAGE"
 
             docker stop app || true && docker rm app || true
