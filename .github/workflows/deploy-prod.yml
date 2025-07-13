@@ -94,7 +94,7 @@ jobs:
 
             return { issue_number: issue.number };
           env:
-            VERSION: ${{ env.VERSION }}
+            VERSION: ${{ inputs.release_version }}
 
       - name: Add comment to related GitHub Issue
         if: steps.find_issue.outputs.issue_number
