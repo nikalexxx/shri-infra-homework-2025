@@ -1,0 +1,40 @@
+name: Production Release and deployment
+permissions:
+  id-token: write
+  contents: write
+  issues: write
+
+env:
+  RELEASE_BRANCH: releases/${{ github.event.inputs.release-version }}
+  REGISTRY: cr.yandex/crp8ugevmr1vj1p9f3jh
+  IMAGE_TO_PULL: cr.yandex/crp8ugevmr1vj1p9f3jh/app:${{ github.event.inputs.release-version }}_latest
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-version:
+        description: 'Номер релиза для деплоя'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+    - name: Run release image
+      run: |
+        ssh -l yar ${{ secrets.SSH_HOST }} << 'EOF'
+          docker run $IMAGE_TO_PULL
+        EOF
+    # - name: cleanup
+    #   run: |
+    #     ssh -l yar ${{ secrets.SSH_HOST }} << 'EOF'
+    #       docker system prune -af
+    #     EOF
