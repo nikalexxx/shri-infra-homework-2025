@@ -31,11 +31,10 @@ jobs:
 
       - name: Authenticate with Container Registry
         run: |
-          docker login {{ registry }} \
+          echo ${{ secrets.YANDEX_OAUTH_TOKEN }}|docker login \
             --username oauth \
-            --password-stdin <<< "$CR_PAT"
-        env:
-          CR_PAT: ${{ secrets.CR_TOKEN }}  # Yandex Container Registry PAT или другой
+            --password-stdin \
+          cr.yandex
 
       # # проверяе что образ существует
       # - name: Check if image exists in registry
@@ -61,8 +60,6 @@ jobs:
           key: ${{ secrets.PRIVATE_KEY }}
           port: 22
           script: |
-            RELEASE_VERSION=${{ inputs.release_version }}
-
             curl --header Metadata-Flavor:Google 169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token | \
             cut -f1 -d',' | \
             cut -f2 -d':' | \
@@ -73,7 +70,7 @@ jobs:
             docker rm app || true
 
             docker pull $DOCKER_IMAGE_NAME:${RELEASE_VERSION}_latest
-            docker run -p 3000:3000 app
+            docker run -p 3000:3000 ${DOCKER_IMAGE_NAME}:${RELEASE_VERSION}
 
       - name: Add comment to related GitHub Issue
         uses: mikeal/github-comment@v1
