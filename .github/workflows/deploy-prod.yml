@@ -83,7 +83,7 @@ jobs:
             const response = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              state: 'open',
+              state: 'all',  # ищем и открытые, и закрытые
               per_page: 100
             });
 
@@ -94,6 +94,7 @@ jobs:
               return {};
             }
 
+            console.log(`Найден Issue: #${issue.number}`);
             return { issue_number: issue.number };
 
       - name: Add comment to related GitHub Issue
