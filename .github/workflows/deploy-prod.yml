@@ -14,7 +14,7 @@ env:
   YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
   REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
   VERSION: ${{ github.run_number }}
-  DOCKER_IMAGE_NAME: cr.yandex/${{ env.REGISTRY_ID }}/app
+  DOCKER_IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
 
 jobs:
   deploy:
@@ -24,14 +24,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up environment
-        run: |
-          echo "Запуск выкатки версии ${{ inputs.release_version }}"
-          export RELEASE_VERSION=${{ inputs.release_version }}
-
       - name: Authenticate with Container Registry
         run: |
-          echo ${{ secrets.YANDEX_OAUTH_TOKEN }}|docker login \
+          echo ${{ env.YANDEX_OAUTH_TOKEN }}|docker login \
             --username oauth \
             --password-stdin \
           cr.yandex
@@ -69,8 +64,8 @@ jobs:
             docker stop app || true
             docker rm app || true
 
-            docker pull $DOCKER_IMAGE_NAME:${RELEASE_VERSION}_latest
-            docker run -p 3000:3000 ${DOCKER_IMAGE_NAME}:${RELEASE_VERSION}
+            docker pull ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}_latest
+            docker run -p 3000:3000 ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
 
       - name: Add comment to related GitHub Issue
         uses: mikeal/github-comment@v1
@@ -78,7 +73,7 @@ jobs:
           issue: ${{ github.event.inputs.issue_number || 123 }}  # можно сделать инпутом
           token: ${{ secrets.GITHUB_TOKEN }}
           message: |
-            ✅ Релиз `${{ inputs.release_version }}` успешно выкачен в production!
+            ✅ Релиз `${{ env.VERSION }}` успешно выкачен в production!
             
             **Дата:** $(date +"%Y-%m-%d %T")
             **Кем запущен:** @${{ github.actor }}
