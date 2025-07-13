@@ -49,10 +49,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-meta
-
       - name: Build app image
         run: |
           docker build -t $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }} .
