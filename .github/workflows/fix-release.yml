@@ -58,12 +58,12 @@ jobs:
         id: commits
         run: |
           git fetch --tags
-          TAG=$(git tag --sort=-creatordate | grep -E "^${RELEASE_VERSION}(_fix[0-9]+)?$" | sed -n 2p)
-          echo "PREV_TAG=$TAG" >> $GITHUB_OUTPUT
-          if [ -z "$TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s (%h)" releases/$RELEASE_VERSION)
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+(_fix[0-9]+)?$" | sed -n 2p)
+          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_OUTPUT
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD)
           else
-            COMMITS=$(git log $TAG..releases/$RELEASE_VERSION --pretty=format:"- %s (%h)")
+            COMMITS=$(git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)")
           fi
           echo "commits=$COMMITS" >> $GITHUB_OUTPUT
 
