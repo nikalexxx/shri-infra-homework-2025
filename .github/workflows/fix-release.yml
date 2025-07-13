@@ -114,7 +114,9 @@ jobs:
             ${{ env.COMMITS }}
 
             ### 📂 Link
-            ...
+
+            [cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}](https://cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }})
+
             `;
 
             github.rest.issues.createComment({
