@@ -1,0 +1,30 @@
+name: Deploy to VM
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия Docker-образа для деплоя (например, 9_latest)"
+        required: true
+
+jobs:
+  deploy:
+    name: Deploy to Yandex Cloud VM
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/crpfnnn98v057d07iqev
+      IMAGE_NAME: app
+      RELEASE_VERSION: ${{ github.event.inputs.version }}
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ubuntu
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            docker login -u oauth -p ${{ secrets.Y_CR_TOKEN }} cr.yandex
+            docker pull $REGISTRY/$IMAGE_NAME:${RELEASE_VERSION}
+            docker stop shri-infra || true
+            docker rm shri-infra || true
+            docker run -d --name shri-infra -p 3000:3000 $REGISTRY/$IMAGE_NAME:${RELEASE_VERSION}
