@@ -53,19 +53,17 @@ jobs:
                   git push origin $VERSION
 
             - name: Get previous tag and commits
-              id: changelog
+              id: commits
               run: |
-                  git fetch --tags
-                  TAG=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | sed -n 2p)
-                  echo "PREV_TAG=$TAG" >> $GITHUB_OUTPUT
-                  if [ -z "$TAG" ]; then
-                    COMMITS=$(git log --pretty=format:"- %s (%h)" main)
-                  else
-                    COMMITS=$(git log $TAG..main --pretty=format:"- %s (%h)")
+                  COMMITS=$(git log --oneline --pretty=format:"- %h %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD)
+                  if [ -z "$COMMITS" ]; then
+                    COMMITS="(no new commits)"
                   fi
-                  echo "commits<<EOF" >> $GITHUB_OUTPUT
-                  echo "$COMMITS" >> $GITHUB_OUTPUT
-                  echo "EOF" >> $GITHUB_OUTPUT
+                  {
+                    echo 'COMMITS<<ENDCOMMITS'
+                    echo "$COMMITS"
+                    echo 'ENDCOMMITS'
+                  } >> $GITHUB_ENV
 
             - name: Create GitHub Issue
               env:
@@ -78,7 +76,7 @@ jobs:
                   Номер версии: $VERSION
 
                   Список коммитов:
-                  ${{ steps.changelog.outputs.commits }}
+                  ${{ env.COMMITS }}
 
                   Docker-образ: cr.yandex/${{secrets.YC_CR_REGISTRY_ID}}/app:$VERSION
                   " \
@@ -89,7 +87,7 @@ jobs:
               run: |
                   DATE="$(date '+%Y-%m-%d %H:%M:%S')"
                   HEADER="## $VERSION — $DATE"
-                  COMMITS="${{ steps.changelog.outputs.commits }}"
+                  COMMITS="${{ env.COMMITS }}"
 
                   echo -e "$HEADER\n$COMMITS\n" | cat - CHANGELOG.md > CHANGELOG.tmp
                   mv CHANGELOG.tmp CHANGELOG.md
