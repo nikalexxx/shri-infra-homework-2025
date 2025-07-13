@@ -17,7 +17,7 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_IP }}
-          username: ubuntu
+          username: anuar
           key: ${{ secrets.SSH_KEY }}
           script: |
             docker pull $REGISTRY/app:${{ github.event.inputs.version }}_latest
