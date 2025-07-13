@@ -97,3 +97,9 @@ jobs:
                   git add CHANGELOG.md
                   git commit -m "update CHANGELOG.md for release $VERSION"
                   git push origin releases/$VERSION
+
+            - name: Merge release branch to main
+              run: |
+                  git checkout main
+                  git merge releases/$VERSION --no-edit
+                  git push origin main
