@@ -15,65 +15,66 @@ jobs:
       IMAGE_BASE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
 
     steps:
-  
+
       - uses: actions/checkout@v4
         with:
           ref: releases/${{ inputs.version }}
           fetch-depth: 0         
 
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
+        with:
+          node-version: 20
+          cache: npm
+
       - run: npm ci
       - run: npm run lint
       - run: npm test -- --watchAll=false
 
-  
       - id: calc
         run: echo "FIX=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
-
-      - run: |
+      - name: docker login
+        run: |
           echo "${{ secrets.YC_IAM_TOKEN }}" | \
             docker login -u iam --password-stdin cr.yandex
 
       - name: build & push image
         env:
-          IMG_FIX:   ${{ env.IMAGE_BASE }}:${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }}
-          IMG_LATEST:${{ env.IMAGE_BASE }}:${{ inputs.version }}_latest
+          IMG_FIX: ${{ env.IMAGE_BASE }}:${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }}
+          IMG_LATEST: ${{ env.IMAGE_BASE }}:${{ inputs.version }}_latest
         run: |
           docker build -t "$IMG_FIX" -t "$IMG_LATEST" .
           docker push "$IMG_FIX"
           docker push "$IMG_LATEST"
 
-   
       - name: tag git
-        env: { TAG: v${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }} }
+        env:
+          TAG: v${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }}
         run: |
           git config --global user.name  "github-actions[bot]"
           git config --global user.email "ci@example.com"
           git tag "$TAG"
           git push origin "$TAG"
 
-    #-------------------- собираем список коммитов
-      - id: commits
+      - name: collect commit log
+        id: commits
         run: |
           PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -n "$PREV" ]; then
             git log --pretty='- %s' ${PREV}..HEAD > log.txt
           else
-            git log --pretty='- %s'      > log.txt
+            git log --pretty='- %s' > log.txt
           fi
           echo "LIST<<EOF" >> $GITHUB_OUTPUT
-          cat log.txt      >> $GITHUB_OUTPUT
-          echo "EOF"       >> $GITHUB_OUTPUT
+          cat log.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-    #-------------------- кидаем коммент в Issue «Release <ver>»
       - name: comment in release issue
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          VER:      ${{ inputs.version }}
-          FIX:      ${{ steps.calc.outputs.FIX }}
-          IMG_FIX:  ${{ env.IMAGE_BASE }}:${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }}
+          VER: ${{ inputs.version }}
+          FIX: ${{ steps.calc.outputs.FIX }}
+          IMG_FIX: ${{ env.IMAGE_BASE }}:${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }}
         run: |
           ISSUE=$(gh issue list --repo "$GITHUB_REPOSITORY" \
                    --search "Release $VER" --json number -q '.[0].number')
