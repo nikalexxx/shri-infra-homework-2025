@@ -120,7 +120,7 @@ jobs:
 
             ### 📂 Link
 
-            https://cr.yandex/ ${process.env.REGISTRY_ID}/app:${process.env.VERSION}
+            # https://cr.yandex/${process.env.REGISTRY_ID}/app:${process.env.VERSION}
             `;
 
             github.rest.issues.createComment({
