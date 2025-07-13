@@ -1,6 +1,9 @@
 name: Deploy to Production
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       release_version:
@@ -18,18 +21,27 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-    
+
+    - name: Set release version
+      id: set_release_version
+      run: |
+        if [ -n "${{ github.event.inputs.release_version }}" ]; then
+          echo "RELEASE_VERSION=${{ github.event.inputs.release_version }}" >> $GITHUB_OUTPUT
+        else
+          echo "RELEASE_VERSION=latest" >> $GITHUB_OUTPUT
+        fi
+
     - name: Login to Yandex Cloud Container Registry
       uses: docker/login-action@v3
       with:
         registry: cr.yandex
         username: json_key
         password: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
-    
+
     - name: Check if image exists
       run: |
-        docker manifest inspect ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release_version }}_latest
-    
+        docker manifest inspect ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_release_version.outputs.RELEASE_VERSION }}_latest
+
     - name: Deploy to server
       uses: appleboy/ssh-action@v1.0.0
       with:
@@ -37,7 +49,7 @@ jobs:
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
         script: |
-          # Login to Yandex Container Registry
+          # Login to Yandex Cloud Container Registry
           echo '${{ secrets.YC_SA_JSON_CREDENTIALS }}' | docker login --username json_key --password-stdin cr.yandex
           
           # Stop existing container if running
@@ -45,24 +57,24 @@ jobs:
           docker rm shri-app || true
           
           # Pull and run new image
-          docker pull ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release_version }}_latest
-          docker run -d --name shri-app -p 3000:3000 --restart unless-stopped ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release_version }}_latest
-    
+          docker pull ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_release_version.outputs.RELEASE_VERSION }}_latest
+          docker run -d --name shri-app -p 3000:3000 --restart unless-stopped ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_release_version.outputs.RELEASE_VERSION }}_latest
+
     - name: Get release issue number
       id: issue
       run: |
-        ISSUE_NUMBER=$(gh issue list --search "Release ${{ inputs.release_version }}" --json number --jq '.[0].number')
+        ISSUE_NUMBER=$(gh issue list --search "Release ${{ steps.set_release_version.outputs.RELEASE_VERSION }}" --json number --jq '.[0].number')
         echo "number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
+
     - name: Comment on release issue
       run: |
         gh issue comment ${{ steps.issue.outputs.number }} --body "## Production Deployment
         
         **Deploy Date:** $(date)
         **Deploy Author:** ${{ github.actor }}
-        **Version:** ${{ inputs.release_version }}
+        **Version:** ${{ steps.set_release_version.outputs.RELEASE_VERSION }}
         
         The release has been successfully deployed to production."
       env:
