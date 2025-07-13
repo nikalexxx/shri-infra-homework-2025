@@ -23,6 +23,10 @@ jobs:
           username: dinara
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
+            echo "REGISTRY: $REGISTRY"
+            echo "IMAGE_NAME: $IMAGE_NAME"
+            echo "RELEASE_VERSION: $RELEASE_VERSION"
+            echo "IMAGE TO RUN: $REGISTRY/$IMAGE_NAME:${RELEASE_VERSION}"
             docker login -u oauth -p ${{ secrets.Y_CR_TOKEN }} cr.yandex
             docker pull $REGISTRY/$IMAGE_NAME:${RELEASE_VERSION}
             docker stop shri-infra || true
