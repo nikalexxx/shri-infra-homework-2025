@@ -5,7 +5,7 @@ on:
 
 env:
   YC_REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
-  IMAGE_NAME: app
+  IMAGE_NAME: infra-hw
 
 jobs:
   check:
