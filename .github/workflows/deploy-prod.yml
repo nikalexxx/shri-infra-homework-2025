@@ -97,7 +97,7 @@ jobs:
             console.log(`Найден Issue: #${issue.number}`);
             return { issue_number: String(issue.number) };
 
-      - name: Debug: Output issue number
+      - name: Debug Output issue number
         run: |
           echo "Issue number: ${{ steps.find_issue.outputs.issue_number }}"
 
