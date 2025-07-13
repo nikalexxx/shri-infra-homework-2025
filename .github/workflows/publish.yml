@@ -49,6 +49,7 @@ jobs:
         echo -e "## [${{ github.run_number }}] - $(date +%Y-%m-%d)\n\n${{ steps.commits.outputs.COMMITS }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
         git checkout -b releases/${{ github.run_number }}
         git add CHANGELOG.md
+        git commit -m "Update CHANGELOG for release ${{ github.run_number }}"
         git push origin releases/${{ github.run_number }}
     - name: Log in to Yandex Container Registry
       uses: docker/login-action@v3
