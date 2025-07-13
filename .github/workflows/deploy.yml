@@ -30,16 +30,6 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare deployment script
-        run: |
-          cat <<EOF > deploy.sh
-          docker login --username oauth --password ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
-          docker pull $REGISTRY/$IMAGE_NAME:${{ inputs.release }}_latest
-          docker stop app || true
-          docker rm app || true
-          docker run -d --name app -p 80:3000 $REGISTRY/$IMAGE_NAME:${{ inputs.release }}_latest
-          EOF
-
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -48,7 +38,11 @@ jobs:
           key: ${{ secrets.PROD_SSH_KEY }}
           script_stop: true
           script: |
-            bash -s < deploy.sh
+            echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release }}_latest
+            docker stop app || true
+            docker rm app || true
+            docker run -d --name app -p 80:3000 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release }}_latest
 
       - name: Find issue for release
         id: find_issue
