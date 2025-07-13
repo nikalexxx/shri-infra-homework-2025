@@ -1,30 +1,88 @@
-name: Release
-on: workflow_dispatch          
+name: hotfix
 
-env:
-  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Базовый релиз (1, 2, …)"
+        required: true     
 
 jobs:
-  build-and-push:
+  fix:
     runs-on: ubuntu-latest
+
+    env:                
+      IMAGE_BASE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+
     steps:
+  
       - uses: actions/checkout@v4
+        with:
+          ref: releases/${{ inputs.version }}
+          fetch-depth: 0         
 
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
+        with: { node-version: 20, cache: npm }
       - run: npm ci
-      - run: npm run build
+      - run: npm run lint
+      - run: npm test -- --watchAll=false
 
-      - name: Build image
+  
+      - id: calc
+        run: echo "FIX=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+
+      - run: |
+          echo "${{ secrets.YC_IAM_TOKEN }}" | \
+            docker login -u iam --password-stdin cr.yandex
+
+      - name: build & push image
+        env:
+          IMG_FIX:   ${{ env.IMAGE_BASE }}:${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }}
+          IMG_LATEST:${{ env.IMAGE_BASE }}:${{ inputs.version }}_latest
         run: |
-          docker build -t $REGISTRY/app:${{ github.run_number }} \
-                       -t $REGISTRY/app:${{ github.run_number }}_latest .
-      - name: Login to YCR
-        uses: yc-actions/yc-cr-login@v1
-        with:
-          yc-sa-json-credentials: ${{ secrets.YC_SERVICE_ACCOUNT_KEY }}
+          docker build -t "$IMG_FIX" -t "$IMG_LATEST" .
+          docker push "$IMG_FIX"
+          docker push "$IMG_LATEST"
 
-      - name: Push
-        run: docker push --all-tags $REGISTRY/app
+   
+      - name: tag git
+        env: { TAG: v${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }} }
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "ci@example.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+    #-------------------- собираем список коммитов
+      - id: commits
+        run: |
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV" ]; then
+            git log --pretty='- %s' ${PREV}..HEAD > log.txt
+          else
+            git log --pretty='- %s'      > log.txt
+          fi
+          echo "LIST<<EOF" >> $GITHUB_OUTPUT
+          cat log.txt      >> $GITHUB_OUTPUT
+          echo "EOF"       >> $GITHUB_OUTPUT
+
+    #-------------------- кидаем коммент в Issue «Release <ver>»
+      - name: comment in release issue
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          VER:      ${{ inputs.version }}
+          FIX:      ${{ steps.calc.outputs.FIX }}
+          IMG_FIX:  ${{ env.IMAGE_BASE }}:${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }}
+        run: |
+          ISSUE=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+                   --search "Release $VER" --json number -q '.[0].number')
+          if [ -n "$ISSUE" ]; then
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body \
+"**🛠 Fix $FIX** — $(date)
+**Образ:** \`$IMG_FIX\`
+
+${{ steps.commits.outputs.LIST }}"
+          else
+            echo "⚠️  Issue 'Release $VER' не найден."
+          fi
