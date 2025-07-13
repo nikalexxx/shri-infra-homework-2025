@@ -70,12 +70,43 @@ jobs:
           echo "$COMMITS" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Add comment to Release Issue
-        uses: peter-evans/create-or-update-github-issue@v3
+
+      - name: Find issue by release version
+        id: find_issue
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ inputs.release_version }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          title: "Release v${{ env.VERSION }}"
-          body: |
+          script: |
+            const tagName = 'Release v' + process.env.VERSION;
+            const response = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',  // ищем и открытые, и закрытые
+              per_page: 100
+            });
+
+            const issue = response.data.find(i => i.title === tagName);
+
+            if (!issue) {
+              console.log(`Issue с заголовком "${tagName}" не найден`);
+              core.setOutput('issue_number', '');
+            } else {
+              console.log(`Найден Issue: #${issue.number}`);
+              core.setOutput('issue_number', String(issue.number));
+            }
+            return issue ? { number: issue.number } : {};
+
+      - name: Debug Output issue number
+        run: |
+          echo "Issue number: ${{ steps.find_issue.outputs.issue_number }}"
+
+      - name: Add comment to related GitHub Issue
+        if: steps.find_issue.outputs.issue_number
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const message = `
             ### 🔧 Fix Release Update
 
             - **Fix Version:** v${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
@@ -90,5 +121,12 @@ jobs:
             ### 📂 Link
 
             [cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}](https://cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }})
+            `;
 
-          comment-only: true
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.find_issue.outputs.issue_number }},
+              body: message
+            });
+

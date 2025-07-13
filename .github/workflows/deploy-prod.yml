@@ -107,10 +107,10 @@ jobs:
 
             **Дата:** ${new Date().toISOString()}
             **Кем запущен:** @${{ github.actor }}
-                  `;
-                  github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: ${{ steps.find_issue.outputs.issue_number }},
-                    body: message
-                  });
+            `;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.find_issue.outputs.issue_number }},
+              body: message
+            });
