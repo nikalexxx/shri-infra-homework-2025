@@ -45,7 +45,7 @@ jobs:
         run: |
           {
             echo 'COMMITS<<EOF'
-            git log --oneline $(git describe --tags --abbrev=0 HEAD^)..HEAD
+            git log --oneline --pretty=format:"- %h %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD
             echo 'EOF'
           } >> $GITHUB_ENV
 
