@@ -20,7 +20,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_IP }}
-          username: ubuntu
+          username: dinara
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             echo "REGISTRY: cr.yandex/crpfnnn98v057d07iqev"
