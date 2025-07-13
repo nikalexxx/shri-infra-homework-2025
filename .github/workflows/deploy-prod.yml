@@ -1,32 +1,39 @@
-name: Deploy to prod
+name: deploy
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release number (1, 2 …)"
+        description: "Версия для деплоя (1, 2, 13 …)"
         required: true
 
 jobs:
   prod:
     runs-on: ubuntu-latest
+
     steps:
-      - name: SSH → pull & run
+      # 1. Логинимся в YCR и проверяем, что образ с таким тегом существует
+      - name: login & check image
+        env:
+          IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+        run: |
+          echo "IMAGE = $IMAGE"
+          docker login cr.yandex -u oauth -p '${{ secrets.YC_OAUTH_TOKEN }}'
+          docker manifest inspect "$IMAGE" >/dev/null
+
+      # 2. SSH на ВМ → pull → restart контейнера
+      - name: deploy to VM
         uses: appleboy/ssh-action@v1
         with:
           host:     ${{ secrets.SERVER_IP }}
           username: anuar
           key:      ${{ secrets.SSH_KEY }}
           script: |
-            VER="${{ github.event.inputs.version }}"
-            IMAGE="cr.yandex/${{ secrets.YC_REGISTRY }}/app:${VER}_latest"
+            IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest"
 
-            echo ">>> docker login"
-            docker login -u oauth -p '${{ secrets.YC_OAUTH_TOKEN }}' cr.yandex
-
-            echo ">>> docker pull $IMAGE"
+            echo "Deploying $IMAGE"
+            docker login cr.yandex -u oauth -p '${{ secrets.YC_OAUTH_TOKEN }}'
             docker pull "$IMAGE"
 
-            echo ">>> restart container"
             docker stop app || true && docker rm app || true
             docker run -d --name app -p 80:3000 "$IMAGE"
