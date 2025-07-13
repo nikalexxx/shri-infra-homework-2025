@@ -1,0 +1,96 @@
+name: Fix Release Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        type: string
+        description: 'Version of the release to fix (e.g., "1")'
+        required: true
+
+env:
+  REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
+  VERSION: ${{ github.event.inputs.release_version }}
+  FIX_NUMBER: ${{ github.run_number }}
+  DOCKER_IMAGE_NAME: cr.yandex/${{ env.REGISTRY_ID }}/app
+
+jobs:
+  lint-and-test:
+    uses: ./.github/workflows/tests.yml
+
+  build-and-push:
+    name: Build and Push Docker Image
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code from releases/${{ env.VERSION }}
+        uses: actions/checkout@v4
+        with:
+          ref: releases/${{ env.VERSION }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Docker image
+        run: |
+          docker build -t $DOCKER_IMAGE_NAME:${VERSION}_fix${FIX_NUMBER} \
+                       -t $DOCKER_IMAGE_NAME:${VERSION}_latest .
+
+      - name: Login to Yandex Container Registry
+        run: |
+          echo ${{ secrets.YANDEX_OAUTH_TOKEN }} | docker login cr.yandex -u oauth --password-stdin
+
+# TODO кажется пушит только 1 контенер
+      - name: Push Docker images
+        run: |
+          docker push $DOCKER_IMAGE_NAME:${VERSION}_fix${FIX_NUMBER}
+          docker push $DOCKER_IMAGE_NAME:${VERSION}_latest
+
+## создаёт тег с номером текущего релиза + пометкой `fix` и номером фикса
+      - name: Create Git tag v${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
+        run: |
+          git tag v${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
+          git push origin v${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
+
+      - name: Get previous commits
+        id: commits
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD)
+          else
+            COMMITS=$(git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)")
+          fi
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Add comment to Release Issue
+        uses: peter-evans/create-or-update-github-issue@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "Release v${{ env.VERSION }}"
+          body: |
+            ### 🔧 Fix Release Update
+
+            - **Fix Version:** v${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
+            - **Date:** $(date +'%Y-%m-%d')
+            - **Author:** ${{ github.actor }}
+            - **Docker Image:** `$DOCKER_IMAGE_NAME:${VERSION}_fix${FIX_NUMBER}`
+
+            ### 📄 Changelog since last tag
+
+            ${{ env.COMMITS }}
+
+            ### 📂 Link
+
+            ```bash
+            docker pull $DOCKER_IMAGE_NAME:${VERSION}_fix${FIX_NUMBER}
+            ```
+
+          comment-only: true

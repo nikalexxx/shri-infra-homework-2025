@@ -1,0 +1,87 @@
+# TODO fix
+# TODO нужен сервисный акк из https://yandex.cloud/ru/docs/container-registry/tutorials/run-docker-on-vm/console#run)
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        type: string
+        description: 'Версия релиза (например: v1.0.0)'
+        required: true
+
+  env:
+    YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
+    REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
+    VERSION: ${{ github.run_number }}
+    DOCKER_IMAGE_NAME: cr.yandex/${{ env.REGISTRY_ID }}/app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up environment
+        run: |
+          echo "Запуск выкатки версии ${{ inputs.release_version }}"
+          export RELEASE_VERSION=${{ inputs.release_version }}
+
+      - name: Authenticate with Container Registry
+        run: |
+          docker login {{ registry }} \
+            --username oauth \
+            --password-stdin <<< "$CR_PAT"
+        env:
+          CR_PAT: ${{ secrets.CR_TOKEN }}  # Yandex Container Registry PAT или другой
+
+      # # проверяе что образ существует
+      # - name: Check if image exists in registry
+      #   id: check-image
+      #   run: |
+      #     IMAGE_NAME=$DOCKER_IMAGE_NAME:${RELEASE_VERSION}_latest
+      #     docker manifest inspect $IMAGE_NAME > /dev/null 2>&1
+      #     if [ $? -eq 0 ]; then
+      #       echo "✅ Образ найден: $IMAGE_NAME"
+      #       echo "::set-output name=image_exists::true"
+      #     else
+      #       echo "❌ Образ не найден: $IMAGE_NAME"
+      #       exit 1
+      #     fi
+      #   env:
+      #     RELEASE_VERSION: ${{ inputs.release_version }}
+
+      - name: SSH into VM and pull/run Docker image
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.PRIVATE_KEY }}
+          port: 22
+          script: |
+            RELEASE_VERSION=${{ inputs.release_version }}
+
+            curl --header Metadata-Flavor:Google 169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token | \
+            cut -f1 -d',' | \
+            cut -f2 -d':' | \
+            tr -d '"' | \
+            docker login --username iam --password-stdin cr.yandex
+
+            docker stop app || true
+            docker rm app || true
+
+            docker pull $DOCKER_IMAGE_NAME:${RELEASE_VERSION}_latest
+            docker run -p 3000:3000 app
+
+      - name: Add comment to related GitHub Issue
+        uses: mikeal/github-comment@v1
+        with:
+          issue: ${{ github.event.inputs.issue_number || 123 }}  # можно сделать инпутом
+          token: ${{ secrets.GITHUB_TOKEN }}
+          message: |
+            ✅ Релиз `${{ inputs.release_version }}` успешно выкачен в production!
+            
+            **Дата:** $(date +"%Y-%m-%d %T")
+            **Кем запущен:** @${{ github.actor }}
