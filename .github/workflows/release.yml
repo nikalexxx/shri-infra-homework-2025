@@ -63,12 +63,16 @@ jobs:
 
       - name: Update CHANGELOG.md
         run: |
-          echo "## v${{ env.RELEASE_VERSION }} - $(date +'%Y-%m-%d')" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
+          echo "## v${{ env.RELEASE_VERSION }} - $(date +'%Y-%m-%d')" > changelog_entry.txt
+          echo "" >> changelog_entry.txt
+          echo "**Список изменений (коммиты с предыдущего релиза):**" >> changelog_entry.txt
+          git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD >> changelog_entry.txt
+          echo "" >> changelog_entry.txt
+          cat CHANGELOG.md >> changelog_entry.txt
+          mv changelog_entry.txt CHANGELOG.md
           git add CHANGELOG.md
           git commit -m "Update CHANGELOG for v${{ env.RELEASE_VERSION }}"
           git push origin HEAD:releases/${{ env.RELEASE_VERSION }}
-          echo "**Список коммитов с предыдущего релиза:**" >> issue_body.txt
-          git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD >> issue_body.txt
 
       - name: Generate Issue body
         run: |
@@ -79,11 +83,7 @@ jobs:
           echo "**Номер версии:** ${{ env.RELEASE_VERSION }}" >> issue_body.txt
           echo "" >> issue_body.txt
           echo "**Ссылка на Docker-образ:**" >> issue_body.txt
-          IMAGE_PATH="${REGISTRY#cr.yandex/}/${IMAGE_NAME}:${RELEASE_VERSION}"
-          echo "cr.yandex/$IMAGE_PATH" >> issue_body.txt
-          echo "" >> issue_body.txt
-          echo "**Список коммитов с предыдущего релиза:**" >> issue_body.txt
-          git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD >> issue_body.txt
+          echo "$REGISTRY/$IMAGE_NAME:${RELEASE_VERSION}" >> issue_body.txt
 
       - name: Create GitHub Issue
         uses: peter-evans/create-issue-from-file@v4
