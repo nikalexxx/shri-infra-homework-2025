@@ -57,16 +57,12 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `Release ${{ env.VERSION }}`,
-              body: `
-                **Дата:** ${new Date().toISOString()}
-                **Автор:** ${{ github.actor }}
-                **Версия:** ${{ env.VERSION }}
-                **Коммиты:**
-                \`\`\`
-                ${{ env.COMMITS }}
-                \`\`\`
-                **Docker-образ:** ${{ env.REGISTRY }}/app:${{ env.VERSION }}
-              `
+              body: `**Дата:** ${new Date().toISOString()}
+            **Автор:** ${{ github.actor }}
+            **Версия:** ${{ env.VERSION }}
+            **Коммиты:**
+            ${{ env.COMMITS }}
+            **Docker-образ:** ${{ env.REGISTRY }}/app:${{ env.VERSION }}`
             })
       - name: Set up git user
         run: |
