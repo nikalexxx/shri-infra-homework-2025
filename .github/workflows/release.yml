@@ -46,17 +46,19 @@ jobs:
           git tag v${{ steps.ver.outputs.VER }}
           git push origin v${{ steps.ver.outputs.VER }}
 
-      # ---------- CHANGELOG.md ----------
       - id: log
         run: |
           PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           COMMITS=$(git log --pretty='- %s' ${PREV:+${PREV}..HEAD})
+
           { printf '## %s (%s)\n%s\n\n' \
               "${{ steps.ver.outputs.VER }}" "$(date +%Y-%m-%d)" "$COMMITS"
-            cat CHANGELOG.md ; } > _chg && mv _chg CHANGELOG.md
+            cat CHANGELOG.md; } > _chg && mv _chg CHANGELOG.md
+
           git add CHANGELOG.md
           git commit -m "docs: changelog for ${{ steps.ver.outputs.VER }}"
           git push origin HEAD
+
           echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
           echo "$COMMITS"     >> $GITHUB_OUTPUT
           echo "EOF"          >> $GITHUB_OUTPUT
