@@ -16,6 +16,8 @@ jobs:
       IMAGE_NAME: app
       RELEASE_VERSION: ${{ github.event.inputs.version }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
