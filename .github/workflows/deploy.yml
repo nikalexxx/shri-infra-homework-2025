@@ -59,7 +59,7 @@ jobs:
 
             Docker-образ: cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}"
 
-      - name: Debug: Issue not found
+      - name: Debug Issue not found
         if: ${{ steps.find_issue.outputs.ISSUE_NUMBER == '' }}
         run: |
           echo "Релизный Issue для Release ${{ steps.base_version.outputs.BASE_VERSION }} не найден. Комментарий не добавлен."
