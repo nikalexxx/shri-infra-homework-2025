@@ -1,0 +1,161 @@
+name: Управление хотфиксами
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Версия релиза для фикса (например, 5)'
+        required: true
+        type: string
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Получить ветку релиза
+      uses: actions/checkout@v4
+      with:
+        ref: releases/${{ github.event.inputs.release_version }}
+
+    - name: Настроить Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Установить зависимости
+      run: npm ci
+
+    - name: Запустить линтер
+      run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Получить ветку релиза
+      uses: actions/checkout@v4
+      with:
+        ref: releases/${{ github.event.inputs.release_version }}
+
+    - name: Настроить Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Установить зависимости
+      run: npm ci
+
+    - name: Запустить тесты
+      run: npm test
+
+  hotfix:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Получить ветку релиза
+      uses: actions/checkout@v4
+      with:
+        ref: releases/${{ github.event.inputs.release_version }}
+        fetch-depth: 0
+
+    - name: Настроить Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Установить зависимости
+      run: npm ci
+
+    - name: Собрать проект
+      run: npm run build
+
+    - name: Авторизация в Yandex Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: cr.yandex
+        username: json_key
+        password: ${{ secrets.YC_SERVICE_ACCOUNT_KEY }}
+
+    - name: Настроить Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Собрать и загрузить Docker образ хотфикса
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+          cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
+        platforms: linux/amd64
+
+    - name: Создать Git тег
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git tag ${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+        git push origin ${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+
+    - name: Получить предыдущий тег релиза/фикса
+      id: prev_tag
+      run: |
+        PREV_TAG=$(git tag --sort=-version:refname | grep -E '^${{ github.event.inputs.release_version }}(_fix[0-9]+)?$' | head -2 | tail -1)
+        if [ -z "$PREV_TAG" ]; then
+          PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+        fi
+        echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+    - name: Получить коммиты с последнего релиза/фикса
+      id: commits
+      run: |
+        COMMITS=$(git log --oneline ${{ steps.prev_tag.outputs.prev_tag }}..${{ github.sha }} --pretty=format:"- %s (%h)")
+        echo "commits<<EOF" >> $GITHUB_OUTPUT
+        echo "$COMMITS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Обновить связанные issues
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Найти issue связанный с релизом
+          const { data: issues } = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            labels: 'release',
+            state: 'open'
+          });
+
+          const releaseIssue = issues.find(issue =>
+            issue.title.includes(`Релиз ${{ github.event.inputs.release_version }}`)
+          );
+
+          if (releaseIssue) {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: releaseIssue.number,
+              body: `## 🔧 Хотфикс ${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+
+              **Дата фикса:** ${new Date().toLocaleString('ru-RU')}
+              **Автор фикса:** @${{ github.actor }}
+
+              ### Коммиты:
+              ${{ steps.commits.outputs.commits }}
+
+              ### Docker образ:
+              \`cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }}\`
+
+              ### Статус:
+              ✅ Хотфикс создан и готов к деплою
+              `
+            });
+
+            console.log('Обновлен issue #' + releaseIssue.number);
+          } else {
+            console.log('Не найден связанный issue для версии ${{ github.event.inputs.release_version }}');
+          }

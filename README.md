@@ -1,5 +1,9 @@
 # Домашнее задание ШРИ: Инфраструктура
 
+## IP
+    - 158.160.155.41
+    - http://158.160.155.41/hw/store
+
 ## Задача
 
 Вам необходимо форкнуть этот репозиторий и добавить:
@@ -57,7 +61,7 @@ https://yandex.cloud/ru/docs/compute/quickstart/quick-create-linux#create-vm
     - [собирает docker-образ](https://yandex.cloud/ru/docs/container-registry/operations/docker-image/docker-image-create) с двумя тегами тегами:
         - `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>`
         - `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>_latest`
-    
+
     - загружает docker-образ в Container Registry (необходимо, чтобы реджистри отображались оба тега)
 
     - создаёт тег, с номером текущей версии, который указывает на последний коммит в главной ветке
@@ -81,7 +85,7 @@ https://yandex.cloud/ru/docs/compute/quickstart/quick-create-linux#create-vm
     - собирает docker-образ с двумя тегами:
         - `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>_fix<номер_запуска_фиксрелизного_флоу>`
         - `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>_latest`
-    
+
     - загружает docker-образ в Container Registry (в реджистри должен появиться образ с двумя тегами, у старого образа тег latest пропадёт)
 
     - создаёт тег с номером текущего релиза + пометкой `fix` и номером фикса

@@ -1,0 +1,44 @@
+name: Проверка PR
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Получить код репозитория
+      uses: actions/checkout@v4
+
+    - name: Установить Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Установить зависимости
+      run: npm ci
+
+    - name: Запустить линтер
+      run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Получить код репозитория
+      uses: actions/checkout@v4
+
+    - name: Установить Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Установить зависимости
+      run: npm ci
+
+    - name: Запустить тесты
+      run: npm test

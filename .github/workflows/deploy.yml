@@ -1,0 +1,129 @@
+name: Деплой в продакшн
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Версия релиза для деплоя (например, 5)'
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Получить код репозитория
+      uses: actions/checkout@v4
+
+    - name: Авторизация в Yandex Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: cr.yandex
+        username: json_key
+        password: ${{ secrets.YC_SERVICE_ACCOUNT_KEY }}
+
+    - name: Проверить существование Docker образа
+      run: |
+        IMAGE_NAME="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest"
+        echo "Проверка существования образа: $IMAGE_NAME"
+
+        if docker manifest inspect $IMAGE_NAME > /dev/null 2>&1; then
+          echo "✅ Docker образ найден: $IMAGE_NAME"
+          echo "IMAGE_EXISTS=true" >> $GITHUB_ENV
+        else
+          echo "❌ Docker образ не найден: $IMAGE_NAME"
+          echo "IMAGE_EXISTS=false" >> $GITHUB_ENV
+          exit 1
+        fi
+
+    - name: Настроить SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.YC_SSH_PRIVATE_KEY }}
+
+    - name: Деплой на продакшн VM
+      run: |
+        IMAGE_NAME="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest"
+
+        ssh -o StrictHostKeyChecking=no ${{ secrets.YC_VM_USER }}@${{ secrets.YC_VM_HOST }} << EOF
+          echo "🚀 Начинаем деплой образа $IMAGE_NAME"
+
+          # Авторизация в Yandex Container Registry
+          echo '${{ secrets.YC_SERVICE_ACCOUNT_KEY }}' | docker login --username json_key --password-stdin cr.yandex
+
+          # Остановить и удалить старый контейнер
+          docker stop shri-app || true
+          docker rm shri-app || true
+
+          # Загрузить новый образ
+          docker pull $IMAGE_NAME
+
+          # Запустить новый контейнер
+          docker run -d \
+            --name shri-app \
+            --restart unless-stopped \
+            -p 80:3000 \
+            -e NODE_ENV=production \
+            $IMAGE_NAME
+
+          # Проверить статус
+          sleep 5
+          if docker ps | grep -q shri-app; then
+            echo "✅ Деплой успешно завершен"
+            echo "DEPLOY_STATUS=success" >> deployment_status.txt
+          else
+            echo "❌ Деплой не удался"
+            echo "DEPLOY_STATUS=failed" >> deployment_status.txt
+            exit 1
+          fi
+        EOF
+
+    - name: Обновить статус деплоя в issues
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const releaseVersion = '${{ github.event.inputs.release_version }}';
+
+          // Найти issue связанный с релизом
+          const { data: issues } = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            labels: 'release',
+            state: 'open'
+          });
+
+          const releaseIssue = issues.find(issue =>
+            issue.title.includes(`Релиз ${releaseVersion}`)
+          );
+
+          const deploymentComment = `## 🚀 Деплой в продакшн
+
+          **Дата деплоя:** ${new Date().toLocaleString('ru-RU')}
+          **Автор деплоя:** @${{ github.actor }}
+          **Версия:** ${releaseVersion}
+
+          ### Статус:
+          ✅ Релиз успешно выкачен в продакшн
+
+          ### Детали:
+          - Docker образ: \`cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${releaseVersion}_latest\`
+          - Хост: \`${{ secrets.YC_VM_HOST }}\`
+          - Контейнер: \`shri-app\`
+          - Порт: \`80:3000\`
+
+          🎉 **Деплой завершен успешно!**
+          `;
+
+          if (releaseIssue) {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: releaseIssue.number,
+              body: deploymentComment
+            });
+
+            console.log('Обновлен issue #' + releaseIssue.number);
+          } else {
+            console.log('Не найден связанный issue для версии ' + releaseVersion);
+          }

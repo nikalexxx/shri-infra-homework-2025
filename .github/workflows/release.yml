@@ -1,0 +1,164 @@
+name: Создание релиза
+
+on:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Получить ветку релиза
+      uses: actions/checkout@v4
+
+    - name: Настроить Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Установить зависимости
+      run: npm ci
+
+    - name: Запустить линтер
+      run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Получить ветку релиза
+      uses: actions/checkout@v4
+
+    - name: Настроить Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Установить зависимости
+      run: npm ci
+
+    - name: Запустить тесты
+      run: npm test
+
+  release:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Получить ветку релиза
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Настроить Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Установить зависимости
+      run: npm ci
+
+    - name: Собрать проект
+      run: npm run build
+
+    - name: Создать ветку релиза
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git checkout -b releases/${{ github.run_number }}
+        git push origin releases/${{ github.run_number }}
+
+    - name: Авторизация в Yandex Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: cr.yandex
+        username: json_key
+        password: ${{ secrets.YC_SERVICE_ACCOUNT_KEY }}
+
+    - name: Настроить Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Собрать и загрузить Docker образ
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.run_number }}
+          cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.run_number }}_latest
+        platforms: linux/amd64
+
+    - name: Создать Git тег
+      run: |
+        git tag ${{ github.run_number }}
+        git push origin ${{ github.run_number }}
+
+    - name: Получить предыдущий тег релиза
+      id: prev_tag
+      run: |
+        PREV_TAG=$(git tag --sort=-version:refname | grep -E '^[0-9]+$' | head -2 | tail -1)
+        if [ -z "$PREV_TAG" ]; then
+          PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+        fi
+        echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+    - name: Получить коммиты с последнего релиза
+      id: commits
+      run: |
+        COMMITS=$(git log --oneline ${{ steps.prev_tag.outputs.prev_tag }}..${{ github.sha }} --pretty=format:"- %s (%h)")
+        echo "commits<<EOF" >> $GITHUB_OUTPUT
+        echo "$COMMITS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Создать GitHub Issue
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { data: issue } = await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `Релиз ${{ github.run_number }}`,
+            body: `## Релиз ${{ github.run_number }}
+
+            **Дата:** ${new Date().toLocaleString('ru-RU')}
+            **Автор релиза:** @${{ github.actor }}
+            **Версия:** ${{ github.run_number }}
+
+            ### Коммиты:
+            ${{ steps.commits.outputs.commits }}
+
+            ### Docker образ:
+            \`cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.run_number }}\`
+
+            ### Статус:
+            ✅ Релиз создан и готов к деплою
+            `,
+            labels: ['release', 'deployment']
+          });
+
+          console.log('Создан issue #' + issue.number);
+
+    - name: Обновить CHANGELOG.md
+      run: |
+        cat > temp_changelog.md << 'EOF'
+        # Changelog
+
+        ## [${{ github.run_number }}] - $(date +'%Y-%m-%d')
+
+        ### Изменения:
+        ${{ steps.commits.outputs.commits }}
+
+        EOF
+
+        if [ -f CHANGELOG.md ]; then
+          tail -n +2 CHANGELOG.md >> temp_changelog.md
+        fi
+
+        mv temp_changelog.md CHANGELOG.md
+
+        git add CHANGELOG.md
+        git commit -m "Обновить CHANGELOG.md для релиза ${{ github.run_number }}"
+        git push origin releases/${{ github.run_number }}

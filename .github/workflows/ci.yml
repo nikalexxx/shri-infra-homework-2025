@@ -3,22 +3,22 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [main]
-  workflow_dispatch:  # Разрешает ручной запуск
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Получить код репозитория
         uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
-      
-      - name: Install dependencies
+
+      - name: Установить зависимости
         run: npm ci
-      
-      - name: Run tests
+
+      - name: Запустить тесты
         run: npm test
