@@ -56,38 +56,41 @@ jobs:
           git checkout -b releases/${{ env.RELEASE_VERSION }}
           git push origin releases/${{ env.RELEASE_VERSION }}
 
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
+
       - name: Create Git tag
         run: |
           git tag v${{ env.RELEASE_VERSION }}
           git push origin v${{ env.RELEASE_VERSION }}
 
-      - name: Update CHANGELOG.md
+      - name: Generate commit list
+        id: commits
         run: |
-          echo "## v${{ env.RELEASE_VERSION }} - $(date +'%Y-%m-%d')" > changelog_entry.txt
-          echo "" >> changelog_entry.txt
-          echo "**Список изменений (коммиты с предыдущего релиза):**" >> changelog_entry.txt
-          git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD >> changelog_entry.txt
-          echo "" >> changelog_entry.txt
-          cat CHANGELOG.md >> changelog_entry.txt
-          mv changelog_entry.txt CHANGELOG.md
-          git add CHANGELOG.md
-          git commit -m "Update CHANGELOG for v${{ env.RELEASE_VERSION }}"
-          git push origin HEAD:releases/${{ env.RELEASE_VERSION }}
-
-      - name: Получить предыдущий тег и коммиты
-        id: changelog
-        run: |
-          git fetch --tags
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | sed -n 2p)
-          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
-          if [ -z "$PREV_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s (%h)" main)
+          if [ -z "${{ env.PREV_TAG }}" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD)
           else
-            COMMITS=$(git log $PREV_TAG..main --pretty=format:"- %s (%h)")
+            COMMITS=$(git log ${{ env.PREV_TAG }}..HEAD --pretty=format:"- %s (%h)")
           fi
           echo "COMMITS<<EOF" >> $GITHUB_ENV
           echo "$COMMITS" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
+
+      - name: Update CHANGELOG.md
+        run: |
+          echo "# v${{ env.RELEASE_VERSION }} $(date +'%Y-%m-%d')" > new_changelog.md
+          echo "" >> new_changelog.md
+          echo "${{ env.COMMITS }}" >> new_changelog.md
+          echo "" >> new_changelog.md
+          cat CHANGELOG.md >> new_changelog.md
+          mv new_changelog.md CHANGELOG.md
+
+          git add CHANGELOG.md
+          git commit -m "Update CHANGELOG for v${{ env.RELEASE_VERSION }}"
+          git push origin releases/${{ env.RELEASE_VERSION }}
 
       - name: Сформировать тело Issue релиза
         run: |
@@ -101,6 +104,7 @@ jobs:
           echo "${{ env.COMMITS }}" >> issue_body.txt
           echo "" >> issue_body.txt
           echo "**Docker-образ:** cr.yandex/crpfnnn98v057d07iqev/app:${{ env.RELEASE_VERSION }}" >> issue_body.txt
+
       - name: Создать Issue в GitHub
         uses: peter-evans/create-issue-from-file@v4
         with:
