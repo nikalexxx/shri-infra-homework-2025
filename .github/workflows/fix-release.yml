@@ -12,7 +12,7 @@ jobs:
     name: Fix build and publish
     runs-on: ubuntu-latest
     env:
-      REGISTRY: cr.yandex/crpfnnn98v057d07iqev
+      REGISTRY: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}
       IMAGE_NAME: app
       RELEASE_VERSION: ${{ github.event.inputs.release_version }}
       FIX_NUMBER: ${{ github.run_number }}
@@ -88,7 +88,7 @@ jobs:
             Список коммитов:
             ${{ steps.commits.outputs.commits }}
 
-            Docker-образ: cr.yandex/crpfnnn98v057d07iqev/app:${{ env.RELEASE_VERSION }}_fix${{ env.FIX_NUMBER }}"
+            Docker-образ: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ env.RELEASE_VERSION }}_fix${{ env.FIX_NUMBER }}"
 
       # - name: Generate Issue body
       #   run: |

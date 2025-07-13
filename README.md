@@ -12,6 +12,7 @@
 - `Y_CR_TOKEN` - OAuth-токен для доступа к Yandex Container Registry
 - `VM_IP` - IP-адрес ВМ
 - `VM_SSH_KEY` - SSH-ключ для деплоя: сгенерирован локально, приватная часть в GitHub Secrets, публичная - в authorized_keys на сервере.
+- `YC_CR_REGISTRY_ID` - идентификатор реестра
 
 ## Задача
 

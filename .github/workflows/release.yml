@@ -12,7 +12,7 @@ jobs:
         node-version: [20.x]
         os: [ubuntu-latest]
     env:
-      REGISTRY: cr.yandex/crpfnnn98v057d07iqev
+      REGISTRY: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}
       IMAGE_NAME: app
     steps:
       - name: Checkout repository
@@ -103,7 +103,7 @@ jobs:
           echo "**Список коммитов с предыдущего релиза:**" >> issue_body.txt
           echo "${{ env.COMMITS }}" >> issue_body.txt
           echo "" >> issue_body.txt
-          echo "**Docker-образ:** cr.yandex/crpfnnn98v057d07iqev/app:${{ env.RELEASE_VERSION }}" >> issue_body.txt
+          echo "**Docker-образ:** cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ env.RELEASE_VERSION }}" >> issue_body.txt
 
       - name: Создать Issue в GitHub
         uses: peter-evans/create-issue-from-file@v4

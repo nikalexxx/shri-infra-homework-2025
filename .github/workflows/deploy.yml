@@ -12,7 +12,7 @@ jobs:
     name: Deploy to Yandex Cloud VM
     runs-on: ubuntu-latest
     env:
-      REGISTRY: cr.yandex/crpfnnn98v057d07iqev
+      REGISTRY: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}
       IMAGE_NAME: app
       RELEASE_VERSION: ${{ github.event.inputs.version }}
     steps:
@@ -26,15 +26,15 @@ jobs:
           username: dinara
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            echo "REGISTRY: cr.yandex/crpfnnn98v057d07iqev"
+            echo "REGISTRY: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}"
             echo "IMAGE_NAME: app"
             echo "RELEASE_VERSION: ${{ github.event.inputs.version }}"
-            echo "IMAGE TO RUN: cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}"
+            echo "IMAGE TO RUN: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.version }}"
             docker login -u oauth -p ${{ secrets.Y_CR_TOKEN }} cr.yandex
-            docker pull cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}
+            docker pull cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.version }}
             docker stop shri-infra || true
             docker rm shri-infra || true
-            docker run -d --name shri-infra -p 3000:3000 cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}
+            docker run -d --name shri-infra -p 3000:3000 cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.version }}
 
       - name: Extract base release version
         id: base_version
@@ -60,7 +60,7 @@ jobs:
             Дата: $(date '+%Y-%m-%d %H:%M:%S')  
             Автор: ${{ github.actor }}  
 
-            Docker-образ: cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}"
+            Docker-образ: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.version }}"
 
       - name: Debug Issue not found
         if: ${{ steps.find_issue.outputs.ISSUE_NUMBER == '' }}
