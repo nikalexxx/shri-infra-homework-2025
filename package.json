@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "scripts": {
     "start": "nodemon ./src/server/index.ts",
-    "build": "webpack --mode=production --node-env=production",
+    "start:prod": "node ./dist/server/index.js",
+    "build": "webpack --mode=production --node-env=production && tsc --project tsconfig.server.json",
     "watch": "webpack --watch",
     "test": "jest",
     "lint": "eslint ./src"

@@ -1,0 +1,101 @@
+name: Deploy to Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version to deploy'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/${{ secrets.REGISTRY_ID }}
+      VERSION: ${{ github.event.inputs.version }}
+
+    steps:
+      - name: Log in to Yandex Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: cr.yandex
+          username: ${{ secrets.YC_REGISTRY_USER }}
+          password: ${{ secrets.YC_REGISTRY_TOKEN }}
+
+      - name: Verify image exists
+        run: |
+          echo "REGISTRY_ID: ${{ secrets.REGISTRY_ID }}"
+          echo "REGISTRY: ${REGISTRY}"
+          echo "VERSION: ${VERSION}"
+          echo "Checking for image: ${REGISTRY}/app:${VERSION}_latest"
+          if docker manifest inspect ${REGISTRY}/app:${VERSION}_latest; then
+            echo "✅ Image ${REGISTRY}/app:${VERSION}_latest found"
+          else
+            echo "❌ Image ${REGISTRY}/app:${VERSION}_latest not found"
+            echo "Checking for alternative tags..."
+            if docker manifest inspect ${REGISTRY}/app:${VERSION}; then
+              echo "✅ Found ${REGISTRY}/app:${VERSION}, will use this instead"
+              echo "VERSION_TAG=${VERSION}" >> $GITHUB_ENV
+            else
+              echo "❌ No image found for version ${VERSION}"
+              echo "Available images in registry:"
+              # Попробуем получить список доступных образов
+              echo "Please check if the image was built and pushed correctly"
+              exit 1
+            fi
+          fi
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v0.1.4
+        env:
+          YC_TOKEN: ${{ secrets.YC_REGISTRY_TOKEN }}
+          YC_USER: ${{ secrets.YC_REGISTRY_USER }}
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          envs: REGISTRY,VERSION,VERSION_TAG,YC_TOKEN,YC_USER
+          script: |
+            # Логин в Yandex Container Registry
+            # Используем весь JSON ключ для аутентификации
+            echo "$YC_TOKEN" | docker login cr.yandex -u "$YC_USER" --password-stdin
+            
+            # Используем VERSION_TAG если он установлен, иначе VERSION_latest
+            IMAGE_TAG="${VERSION_TAG:-${VERSION}_latest}"
+            echo "Using image: ${REGISTRY}/app:${IMAGE_TAG}"
+            docker pull ${REGISTRY}/app:${IMAGE_TAG}
+            docker stop app || true
+            docker rm app   || true
+            docker run -d --name app -p 3000:3000 ${REGISTRY}/app:${IMAGE_TAG}
+
+      - name: Comment on Release Issue
+        uses: actions/github-script@v6
+        env:
+          VERSION: ${{ env.VERSION }}
+        with:
+          script: |
+            // найдём issue “Release <VERSION>”
+            const list = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+            let iss = list.data.find(i=>i.title===`Release ${process.env.VERSION}`);
+            if (!iss) {
+              // Создаем issue, если он не существует
+              iss = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Release ${process.env.VERSION}`,
+                body: `**Release ${process.env.VERSION}**\n- Created automatically for deployment\n- Version: ${process.env.VERSION}`
+              });
+              iss = iss.data;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: iss.number,
+              body: '🚀 Deployed to production\n' +
+                '- Date: ' + new Date().toISOString().slice(0,10) + '\n' +
+                '- By: @' + context.actor
+            });

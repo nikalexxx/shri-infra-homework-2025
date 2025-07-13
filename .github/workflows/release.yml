@@ -1,0 +1,95 @@
+name: Release
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: cr.yandex/${{ secrets.REGISTRY_ID }}
+  VERSION: ${{ github.run_number }}
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: npm ci
+      - run: npm run test
+
+  publish:
+    name: Build & Publish Release
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create release branch
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b releases/${VERSION}
+          git push origin releases/${VERSION}
+
+      - name: Log in to Yandex Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: cr.yandex
+          username: ${{ secrets.YC_REGISTRY_USER }}
+          password: ${{ secrets.YC_REGISTRY_TOKEN }}
+
+      - name: Build & push Docker images
+        run: |
+          docker build -t ${REGISTRY}/app:${VERSION} .
+          docker tag ${REGISTRY}/app:${VERSION} ${REGISTRY}/app:${VERSION}_latest
+          docker push ${REGISTRY}/app:${VERSION}
+          docker push ${REGISTRY}/app:${VERSION}_latest
+
+      - name: Tag commit
+        run: |
+          git tag ${VERSION}
+          git push origin ${VERSION}
+
+      - name: Gather commit list
+        id: commits
+        run: |
+          PREV=$(git tag --sort=-creatordate | grep -v ${VERSION} | head -n1)
+          git log ${PREV}..HEAD --pretty=format:"* %s (%h)" > commits.txt
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          cat commits.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Update CHANGELOG.md
+        run: |
+          DATE=$(date +'%Y-%m-%d')
+          echo -e "## ${VERSION} — ${DATE}\n${{ steps.commits.outputs.commits }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "docs: update CHANGELOG for release ${VERSION}"
+          git push origin HEAD:releases/${VERSION}
+
+      - name: Create GitHub Issue
+        uses: actions/github-script@v6
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          VERSION: ${{ env.VERSION }}
+          COMMITS: ${{ steps.commits.outputs.commits }}
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release ${process.env.VERSION}`,
+              body: '**Release ' + process.env.VERSION + '**\n' +
+                '- Date: ' + new Date().toISOString().slice(0,10) + '\n' +
+                '- Author: @' + context.actor + '\n' +
+                '- Version: ' + process.env.VERSION + '\n' +
+                '- Commits:\n' + process.env.COMMITS + '\n' +
+                '- Docker: `' + process.env.REGISTRY + '/app:' + process.env.VERSION + '`\n' +
+                '- Docker (latest): `' + process.env.REGISTRY + '/app:' + process.env.VERSION + '_latest`'
+            })
