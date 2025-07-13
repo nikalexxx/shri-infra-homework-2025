@@ -58,7 +58,7 @@ jobs:
             - name: Get previous tag and commits
               id: commits
               run: |
-                  PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+                  PREV_TAG=$(git tag --sort=-version:refname | head -2 | tail -1 2>/dev/null || echo "")
                   if [ -z "$PREV_TAG" ]; then
                     COMMITS=$(git log --oneline --pretty=format:"- %h %s" HEAD)
                   else
