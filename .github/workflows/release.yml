@@ -82,6 +82,7 @@ jobs:
 
                   Docker-образ: cr.yandex/${{secrets.YC_CR_REGISTRY_ID}}/app:$VERSION
                   " \
+                    --label "release" \
                     --repo ${{ github.repository }}
 
             - name: Update CHANGELOG.md
