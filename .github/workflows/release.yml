@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+env:
+  YC_REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+  IMAGE_NAME: app
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linter
+      run: npm run lint
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Run tests
+      run: npm run test
+
+  release:
+    needs: check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Create release branch
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git checkout -b releases/${{ github.run_number }}
+        git push origin releases/${{ github.run_number }}
+    
+    - name: Setup Docker
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Yandex Cloud Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: cr.yandex
+        username: json_key
+        password: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ env.YC_REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          ${{ env.YC_REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}_latest
+    
+    - name: Create Git tag
+      run: |
+        git tag ${{ github.run_number }}
+        git push origin ${{ github.run_number }}
+    
+    - name: Get commits since last release
+      id: commits
+      run: |
+        LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+        if [ -z "$LAST_TAG" ]; then
+          COMMITS=$(git log --oneline --pretty=format:"- %s (%h)")
+        else
+          COMMITS=$(git log --oneline --pretty=format:"- %s (%h)" $LAST_TAG..HEAD)
+        fi
+        echo "commits<<EOF" >> $GITHUB_OUTPUT
+        echo "$COMMITS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    
+    - name: Create release issue
+      run: |
+        gh issue create --title "Release ${{ github.run_number }}" --body "## Release Information
+        
+        **Date:** $(date)
+        **Author:** ${{ github.actor }}
+        **Version:** ${{ github.run_number }}
+        
+        ## Commits:
+        ${{ steps.commits.outputs.commits }}
+        
+        ## Docker Image:
+        \`${{ env.YC_REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}\`"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Update CHANGELOG.md
+      run: |
+        echo "# Release ${{ github.run_number }} - $(date)" > temp_changelog.md
+        echo "" >> temp_changelog.md
+        echo "${{ steps.commits.outputs.commits }}" >> temp_changelog.md
+        echo "" >> temp_changelog.md
+        cat CHANGELOG.md >> temp_changelog.md
+        mv temp_changelog.md CHANGELOG.md
+        git add CHANGELOG.md
+        git commit -m "Update CHANGELOG.md for release ${{ github.run_number }}"
+        git push origin releases/${{ github.run_number }}
