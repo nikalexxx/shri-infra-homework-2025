@@ -85,6 +85,17 @@ jobs:
             - ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest
           labels: release
 
+      - name: Calculate previous version
+        id: prev_version
+        run: echo "value=$((VERSION - 1))" >> $GITHUB_OUTPUT
+        env:
+          VERSION: ${{ env.VERSION }}
+
+      - name: Fetch previous changelog
+        run: |
+          git fetch origin releases/${{ steps.prev_version.outputs.value }}
+          git checkout origin/releases/${{ steps.prev_version.outputs.value }} -- CHANGELOG.md
+
       - name: Update CHANGELOG.md
         run: |
           echo "## $VERSION - ${{ steps.date.outputs.value }}" > .changelog.tmp
