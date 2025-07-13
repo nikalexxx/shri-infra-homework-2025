@@ -103,7 +103,6 @@ jobs:
 
       - name: Add comment to related GitHub Issue
         if: steps.find_issue.outputs.issue_number
-        run: echo "Шаг выполняется! Номер Issue ${{ steps.find_issue.outputs.issue_number }}"
         uses: actions/github-script@v7
         with:
           script: |
