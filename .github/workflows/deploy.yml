@@ -44,10 +44,8 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                body: `
-                  **Релиз выкачен в прод**
-                  **Дата:** ${new Date().toISOString()}
-                  **Автор:** ${{ github.actor }}
-                `
+                body: `**Релиз выкачен в прод**
+              **Дата:** ${new Date().toISOString()}
+              **Автор:** ${{ github.actor }}`
               });
             }
