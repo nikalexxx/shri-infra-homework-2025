@@ -47,7 +47,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            github.issues.create({
+            github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `Release ${{ env.VERSION }}`,
@@ -62,7 +62,10 @@ jobs:
                 **Docker-образ:** ${{ env.REGISTRY }}/app:${{ env.VERSION }}
               `
             })
-
+      - name: Set up git user
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
       - run: |
           echo -e "## ${{ env.VERSION }}\n${{ env.COMMITS }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
           git add CHANGELOG.md
