@@ -26,19 +26,17 @@ jobs:
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
           sudo apt-get update
           sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
 
       - name: Configure YC and Docker auth
         run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
           echo '${{ secrets.YC_SA_KEY }}' > key.json
-          jq empty key.json || exit 1
           yc config set service-account-key key.json
           yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
           yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
           IAM_TOKEN=$(yc iam create-token)
-          echo "$IAM_TOKEN" | docker login --username iam --password-stdin cr.yandex
-          rm -f key.json
+          echo "$IAM_TOKEN" | docker login --username iam --password-stdin cr.yandex/${{ secrets.REGISTRY_ID }}
 
       - name: Install project dependencies
         run: npm ci
@@ -59,7 +57,7 @@ jobs:
         run: |
           docker buildx create --use
           docker buildx build --platform linux/amd64 -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }} -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:latest --push .
-          yc container image list --repository-name=cr.yandex/${{ secrets.REGISTRY_ID }}/app
+          yc container image list --repository-name=app
 
       - name: Create version tag
         run: |
