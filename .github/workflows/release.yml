@@ -47,8 +47,7 @@ jobs:
           name: release-meta
           path: version.txt
 
-  # 3. Сборка и публикация Docker образа
-  docker:
+  build-and-push-app-image:
     needs: prepare-release
     runs-on: ubuntu-latest
     steps:
