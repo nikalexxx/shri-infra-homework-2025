@@ -68,8 +68,19 @@ jobs:
           git commit -m "Update CHANGELOG for v${{ env.RELEASE_VERSION }}"
           git push origin HEAD:releases/${{ env.RELEASE_VERSION }}
 
+      - name: Generate Issue body
+        run: |
+          echo "# Релиз ${{ env.RELEASE_VERSION }}" > issue_body.txt
+          echo "" >> issue_body.txt
+          echo "Дата релиза: $(date +'%Y-%m-%d')" >> issue_body.txt
+          echo "Автор релиза: ${{ github.actor }}" >> issue_body.txt
+          echo "Версия: ${{ env.RELEASE_VERSION }}" >> issue_body.txt
+          echo "" >> issue_body.txt
+          echo "Список изменений (коммиты с предыдущего релиза):" >> issue_body.txt
+          git log --oneline $(git describe --tags --abbrev=0)..HEAD >> issue_body.txt
+
       - name: Create GitHub Issue
         uses: peter-evans/create-issue-from-file@v4
         with:
           title: "Release ${{ env.RELEASE_VERSION }}"
-          content-filepath: ./Issue_release.md
+          content-filepath: ./issue_body.txt
