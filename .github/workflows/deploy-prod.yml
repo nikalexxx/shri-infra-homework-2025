@@ -1,26 +1,15 @@
-name: Deploy to prod
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "release number (e.g. 1)"
-        required: true
+with:
+  host: ${{ secrets.SERVER_IP }}
+  username: anuar
+  key: ${{ secrets.SSH_KEY }}
+  script: |
+    # 1) логинимся в YCR (один раз можно оставить — лишним не будет)
+    docker login -u iam -p $(curl -s http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token | jq -r .access_token) cr.yandex
 
-env:
-  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+    # 2) переменная с полным именем образа
+    IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest"
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Pull & run on server
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SERVER_IP }}
-          username: anuar
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            docker pull $REGISTRY/app:${{ github.event.inputs.version }}_latest
-            docker stop store || true && docker rm store || true
-            docker run -d --name store -p 80:3000 \
-              $REGISTRY/app:${{ github.event.inputs.version }}_latest
+    # 3) тянем и перезапускаем контейнер
+    docker pull $IMAGE
+    docker stop store || true && docker rm store || true
+    docker run -d --name store -p 80:3000 $IMAGE
