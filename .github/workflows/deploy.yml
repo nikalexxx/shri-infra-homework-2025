@@ -16,6 +16,11 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
+            - name: Check if Docker image exists
+              run: |
+                  docker login -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
+                  docker pull cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.RELEASE_VERSION }}_latest || exit 1
+
             - name: Deploy to production server via SSH
               uses: appleboy/ssh-action@master
               with:
