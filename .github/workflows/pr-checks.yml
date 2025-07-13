@@ -1,19 +1,78 @@
-name: PR checks
+name: release
+
 on:
-  pull_request:
-    branches: [main]
+  workflow_dispatch: {}
+
+env:
+  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+
 jobs:
-  lint-and-test:
+  build-release:
     runs-on: ubuntu-latest
+
     steps:
+      # ── Git clone ─────────────────────────────────────────────
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # нужны теги для CHANGELOG
+
+      # ── Версия = номер запуска ────────────────────────────────
+      - id: ver
+        run: echo "VER=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      # ── Node build  ────────────────────────────────────────────
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: 'npm' }
+        with:
+          node-version: 20
+          cache: npm
       - run: npm ci
       - run: npm run lint
       - run: npm test -- --watchAll=false
-      - name: Auto-approve                    
-        if: github.event_name == 'pull_request'
-        uses: hmarr/auto-approve-action@v3
-        with:                                 
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: npm run build
+
+      # ── Docker build & push ───────────────────────────────────
+      - name: docker login
+        run: echo "${{ secrets.YC_IAM_TOKEN }}" | docker login -u iam --password-stdin cr.yandex
+
+      - name: build & push image
+        run: |
+          docker build \
+            -t $REGISTRY:${{ steps.ver.outputs.VER }} \
+            -t $REGISTRY:${{ steps.ver.outputs.VER }}_latest .
+          docker push --all-tags $REGISTRY
+
+      # ── release-ветка + git-тег ───────────────────────────────
+      - name: make release branch & tag
+        run: |
+          git config user.email "ci@example.com"
+          git config user.name  "github-actions[bot]"
+          git switch -c releases/${{ steps.ver.outputs.VER }}
+          git push -u origin HEAD
+          git tag v${{ steps.ver.outputs.VER }}
+          git push origin v${{ steps.ver.outputs.VER }}
+
+      # ── CHANGELOG.md ──────────────────────────────────────────
+      - id: changelog
+        run: |
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          COMMITS=$(git log --pretty='- %s' ${PREV:+${PREV}..HEAD})
+
+          { printf '## %s (%s)\n%s\n\n' \
+              "${{ steps.ver.outputs.VER }}" "$(date +%Y-%m-%d)" "$COMMITS"
+            cat CHANGELOG.md; } > _chg && mv _chg CHANGELOG.md
+
+          git add CHANGELOG.md
+          git commit -m "docs: changelog for ${{ steps.ver.outputs.VER }}"
+          git push origin HEAD
+
+          printf "COMMITS<<EOF\n%s\nEOF\n" "$COMMITS" >> "$GITHUB_OUTPUT"
+
+      # ── GitHub Issue «Release N» ──────────────────────────────
+      - name: open release issue
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Release ${{ steps.ver.outputs.VER }}" \
+            --body "**Дата:** $(date)\n**Коммиты:**\n${{ steps.changelog.outputs.COMMITS }}" \
+            --label release
