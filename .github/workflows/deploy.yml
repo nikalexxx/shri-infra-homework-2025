@@ -59,3 +59,23 @@ jobs:
             # Pull and run new image
             docker pull ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_tag.outputs.IMAGE_TAG }}
             docker run -d --name shri-app -p 3000:3000 --restart unless-stopped ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_tag.outputs.IMAGE_TAG }}
+
+      - name: Get release issue number
+        id: issue
+        run: |
+          ISSUE_NUMBER=$(gh issue list --search "Release ${{ steps.set_tag.outputs.IMAGE_TAG }}" --json number --jq '.[0].number')
+          echo "number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on release issue
+        run: |
+          gh issue comment ${{ steps.issue.outputs.number }} --body "## Production Deployment
+
+          **Deploy Date:** $(date)
+          **Deploy Author:** ${{ github.actor }}
+          **Version:** ${{ steps.set_tag.outputs.IMAGE_TAG }}
+
+          The release has been successfully deployed to production."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
