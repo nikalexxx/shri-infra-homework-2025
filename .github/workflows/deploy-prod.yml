@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Pull & run on server
         uses: appleboy/ssh-action@v1
-      with:
+      - with:
         host: ${{ secrets.SERVER_IP }}
         username: anuar
         key: ${{ secrets.SSH_KEY }}
