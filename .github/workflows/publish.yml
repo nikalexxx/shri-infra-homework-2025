@@ -1,0 +1,77 @@
+name: Publish
+
+on: [workflow_dispatch]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+    - run: npm ci
+    - run: npm run test
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+    - run: npm ci
+    - run: npm run lint
+
+  publish:
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Get commit list
+      id: commits
+      run: |
+        PREV_TAG=$(git describe --tags --abbrev=0 v${{ github.run_number }}^ 2>/dev/null || echo "")
+        if [ -z "$PREV_TAG" ]; then
+          COMMITS=$(git log --pretty="* %h - %s (%an)" main)
+        else
+          COMMITS=$(git log --pretty="* %h - %s (%an)" $PREV_TAG..main)
+        fi
+        COMMITS=$(echo "$COMMITS" | sed 's/"/\\"/g')
+        echo "COMMITS=$COMMITS" >> $GITHUB_OUTPUT
+    - run: |
+        git config user.name "GitHub Actions Bot"
+        git config user.email "<>"
+        echo -e "## [${{ github.run_number }}] - $(date +%Y-%m-%d)\n\n${{ steps.commits.outputs.COMMITS }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+        git checkout -b releases/${{ github.run_number }}
+        git add CHANGELOG.md
+        git push origin releases/${{ github.run_number }}"
+    - run: docker build . -t cr.yandex/crpi9avbm6ms2f4euv0t/app:${{ github.run_number }}  -t cr.yandex/crpi9avbm6ms2f4euv0t/app:${{ github.run_number }}_latest
+    - run: docker image push --all-tags
+    - name: Create Release Issue
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const commits = `${{ steps.commits.outputs.COMMITS }}`;
+          const issueBody = `
+            # Release ${{ github.run_number }}
+
+            **Date**: ${new Date().toISOString().split('T')[0]}
+            **Author**: ${{ github.actor }}
+            **Version**: ${{ github.run_number }}
+            **Docker Image**: cr.yandex/${{ secrets.YANDEX_CR_REGISTRY_ID }}/app:${{ github.run_number }}
+
+            ## Commits
+            ${commits || 'No new commits since last release'}
+          `;
+          
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `Release v${{ github.run_number }}`,
+            body: issueBody
+          });
