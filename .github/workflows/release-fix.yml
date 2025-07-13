@@ -1,4 +1,9 @@
 name: release-fix
+
+permissions:
+  id-token: write
+  contents: read
+
 env:
   RELEASE_BRANCH: releases/${{ github.event.inputs.release-version }}
   REGISTRY: cr.yandex/crp8ugevmr1vj1p9f3jh
@@ -48,13 +53,19 @@ jobs:
     needs: checks
     runs-on: ubuntu-latest
     env:
-      BASE_IMAGE_NAME: $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }}_fix${{ github.run_number }}
+      BASE_IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.release-version }}_fix${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
       - name: Build app image
         run: |
           docker build -t $BASE_IMAGE_NAME .
           docker tag $BASE_IMAGE_NAME $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version}}_latest
+
+      - name: Login to Yandex CR
+        id: login-cr
+        uses: yc-actions/yc-cr-login@v3
+        with:
+          yc-sa-id: ${{ secrets.YC_SA_ID }}
 
       - name: Push app images
         run: |
