@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build app image
         run: |
-          docker build -t $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }} .
+          docker build -t $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }}_fix${{ github.run_number }} .
           docker tag $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }}_fix${{ github.run_number }} $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version}}_latest
 
       - name: Login to Yandex CR
