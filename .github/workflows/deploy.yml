@@ -22,13 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set release version
-        id: set_release_version
+      - name: Set image tag
+        id: set_tag
         run: |
           if [ -n "${{ github.event.inputs.release_version }}" ]; then
-            echo "RELEASE_VERSION=${{ github.event.inputs.release_version }}" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAG=${{ github.event.inputs.release_version }}_latest" >> $GITHUB_OUTPUT
           else
-            echo "RELEASE_VERSION=latest" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAG=latest" >> $GITHUB_OUTPUT
           fi
 
       - name: Login to Yandex Cloud Container Registry
@@ -40,7 +40,7 @@ jobs:
 
       - name: Check if image exists
         run: |
-          docker manifest inspect ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_release_version.outputs.RELEASE_VERSION }}_latest
+          docker manifest inspect ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_tag.outputs.IMAGE_TAG }}
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.0
@@ -57,13 +57,13 @@ jobs:
             docker rm shri-app || true
 
             # Pull and run new image
-            docker pull ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_release_version.outputs.RELEASE_VERSION }}_latest
-            docker run -d --name shri-app -p 3000:3000 --restart unless-stopped ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_release_version.outputs.RELEASE_VERSION }}_latest
+            docker pull ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_tag.outputs.IMAGE_TAG }}
+            docker run -d --name shri-app -p 3000:3000 --restart unless-stopped ${{ env.YC_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set_tag.outputs.IMAGE_TAG }}
 
       - name: Get release issue number
         id: issue
         run: |
-          ISSUE_NUMBER=$(gh issue list --search "Release ${{ steps.set_release_version.outputs.RELEASE_VERSION }}" --json number --jq '.[0].number')
+          ISSUE_NUMBER=$(gh issue list --search "Release ${{ steps.set_tag.outputs.IMAGE_TAG }}" --json number --jq '.[0].number')
           echo "number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -74,7 +74,7 @@ jobs:
 
           **Deploy Date:** $(date)
           **Deploy Author:** ${{ github.actor }}
-          **Version:** ${{ steps.set_release_version.outputs.RELEASE_VERSION }}
+          **Version:** ${{ steps.set_tag.outputs.IMAGE_TAG }}
 
           The release has been successfully deployed to production."
         env:
