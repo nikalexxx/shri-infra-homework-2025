@@ -17,7 +17,7 @@ on:
 env:
   YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
   REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
-  VERSION: ${{ github.run_number }}
+  VERSION: ${{ inputs.release_version}}
   DOCKER_IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
   ISSUE_NUMBER: ${{ github.event.inputs.issue_number || 1 }}
 
@@ -71,7 +71,7 @@ jobs:
               docker stop $CONTAINERS
             fi
 
-            docker pull ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}_latest
+            docker pull ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
             docker run -d  -p 3000:3000 ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
 
       - name: Add comment to related GitHub Issue
