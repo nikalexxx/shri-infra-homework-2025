@@ -66,7 +66,10 @@ jobs:
             tr -d '"' | \
             docker login --username iam --password-stdin cr.yandex
 
-            docker stop $(docker ps -q)
+            CONTAINERS=$(docker ps -q)
+            if [ -n "$CONTAINERS" ]; then
+              docker stop $CONTAINERS
+            fi
 
             docker pull ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}_latest
             docker run -p 3000:3000 ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
