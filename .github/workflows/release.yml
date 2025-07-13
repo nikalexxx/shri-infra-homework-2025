@@ -10,6 +10,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -17,7 +19,7 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
@@ -32,10 +34,12 @@ jobs:
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
           echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
           export PATH="$HOME/yandex-cloud/bin:$PATH"
+          
           echo '${{ secrets.YC_SA_KEY }}' > key.json
           yc config set service-account-key key.json
           yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
           yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+          
           IAM_TOKEN=$(yc iam create-token)
           echo "$IAM_TOKEN" | docker login --username iam --password-stdin cr.yandex/${{ secrets.REGISTRY_ID }}
 
@@ -52,7 +56,7 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git checkout -b releases/v${{ github.run_number }}
-          git push origin releases/v${{ github.run_number }}
+          git push --set-upstream origin releases/v${{ github.run_number }}
 
       - name: Build and push Docker image
         run: |
@@ -71,20 +75,31 @@ jobs:
 
       - name: Update changelog
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0)
-          COMMITS=$(git log $PREV_TAG..HEAD --oneline --no-merges | sed 's/^/- /')
+          git config --global push.default current
+          PREV_TAG=$(git describe --tags --abbrev=0 || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --oneline --no-merges | sed 's/^/- /')
+          else
+            COMMITS=$(git log $PREV_TAG..HEAD --oneline --no-merges | sed 's/^/- /')
+          fi
           echo "## v${{ github.run_number }} ($(date +%Y-%m-%d))" > CHANGELOG.new
           echo "$COMMITS" >> CHANGELOG.new
           cat CHANGELOG.md >> CHANGELOG.new 2>/dev/null || true
           mv CHANGELOG.new CHANGELOG.md
           git add CHANGELOG.md
-          git commit -m "Update CHANGELOG"
-          git push
+          git commit -m "Update CHANGELOG for v${{ github.run_number }}"
+          git push origin HEAD
 
       - name: Create release issue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0)
-          COMMITS=$(git log $PREV_TAG..HEAD --oneline --no-merges | sed 's/^/- /')
-          gh issue create --title "Release v${{ github.run_number }}" --body "Version: ${{ github.run_number }}\n\nChanges:\n$COMMITS\n\nImage: cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --oneline --no-merges | sed 's/^/- /')
+          else
+            COMMITS=$(git log $PREV_TAG..HEAD --oneline --no-merges | sed 's/^/- /')
+          fi
+          gh issue create \
+            --title "Release v${{ github.run_number }}" \
+            --body "Version: ${{ github.run_number }}\n\nChanges:\n$COMMITS\n\nImage: cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }}"
