@@ -4,29 +4,41 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "release number (e.g. 1)"
+        description: "Release number (e.g. 1)"
         required: true
 
 env:
-  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+  REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+  IMAGE_BASE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
 
 jobs:
-  deploy:
+  prod:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Pull & run on server
+      - name: SSH → pull & run container
         uses: appleboy/ssh-action@v1
-        with:                      # <-- тот же шаг!
-          host: ${{ secrets.SERVER_IP }}
-          username: anuar
-          key: ${{ secrets.SSH_KEY }}
+        with:
+          host:     ${{ secrets.SERVER_IP }}   # 158.160.181.254
+          username: anuar                      # логин на ВМ
+          key:      ${{ secrets.SSH_KEY }}     # приватный id_rsa
           script: |
-            docker login -u iam -p $(curl -s \
+    
+            TOKEN=$(curl -sH 'Metadata-Flavor: Google' \
               http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token \
-              | jq -r .access_token) cr.yandex
+              | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 
-            IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest"
+            if [ -z "$TOKEN" ]; then
+              echo "❌ TOKEN is empty — проверь привязку сервис-аккаунта к ВМ" >&2
+              exit 1
+            fi
 
-            docker pull $IMAGE
-            docker stop store || true && docker rm store || true
-            docker run -d --name store -p 80:3000 $IMAGE
+         
+            echo "$TOKEN" | docker login -u iam --password-stdin cr.yandex
+
+         
+            IMAGE="${IMAGE_BASE}:${{ github.event.inputs.version }}_latest"
+
+            docker pull "$IMAGE"
+            docker stop app || true && docker rm app || true
+            docker run -d --name app -p 80:3000 "$IMAGE"
