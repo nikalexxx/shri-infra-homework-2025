@@ -1,0 +1,38 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия для деплоя (1, 2, 13 …)"
+        required: true
+
+jobs:
+  prod:
+    runs-on: ubuntu-latest
+
+    steps:
+    
+      - name: login & check image
+        env:
+          IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+        run: |
+          echo "IMAGE = $IMAGE"
+          docker login cr.yandex -u iam -p '${{ secrets.YC_OAUTH_TOKEN }}'
+          docker manifest inspect "$IMAGE" >/dev/null
+
+      - name: deploy to VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.SERVER_IP }}
+          username: anuar
+          key:      ${{ secrets.SSH_KEY }}
+          script: |
+            IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest"
+
+            echo "Deploying $IMAGE"
+            docker login cr.yandex -u iam -p '${{ secrets.YC_OAUTH_TOKEN }}'
+            docker pull "$IMAGE"
+
+            docker stop app || true && docker rm app || true
+            docker run -d --name app -p 80:3000 "$IMAGE"

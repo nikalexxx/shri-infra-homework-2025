@@ -1,0 +1,64 @@
+name: Hotfix
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Номер релиза (например 1)"
+        required: true
+
+env:
+  REG: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # переход в ветку релиза
+      - name: Checkout release branch
+        run: |
+          git fetch origin "releases/${{ inputs.release }}"
+          git checkout "releases/${{ inputs.release }}"
+
+      # проверки
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: 'npm'}
+      - run: npm ci
+      - run: npm test -- --watchAll=false
+
+      # версия фикса = номер запуска
+      - id: ver
+        run: echo "FIX=${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      # сборка и push двух тегов
+      - name: Build & push image
+        run: |
+          TAG1=$REG/app:${{ inputs.release }}_fix${{ steps.ver.outputs.FIX }}
+          TAG2=$REG/app:${{ inputs.release }}_latest
+          docker build -t $TAG1 -t $TAG2 .
+          docker login -u iam -p "${{ secrets.YC_OAUTH_TOKEN }}" cr.yandex
+          docker push --all-tags $REG/app
+
+      # git-tag v<rel>_fix<run>
+      - name: Git tag
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "github-actions[bot]"
+          git tag v${{ inputs.release }}_fix${{ steps.ver.outputs.FIX }}
+          git push origin v${{ inputs.release }}_fix${{ steps.ver.outputs.FIX }}
+
+      # комментарий в существующий Issue Release X
+      - name: Comment in release issue
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          ISSUE=$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --search "Release ${{ inputs.release }}" --json number -q '.[0].number')
+          if [ -n "$ISSUE" ]; then
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" \
+            --body "**🛠 Fix ${{ steps.ver.outputs.FIX }}** — $(date)\nАвтор: @${{ github.actor }}\nТег: \`v${{ inputs.release }}_fix${{ steps.ver.outputs.FIX }}\`"
+          fi
