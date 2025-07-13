@@ -32,7 +32,7 @@ jobs:
     - name: Run release image
       run: |
         ssh -l yar ${{ secrets.SSH_HOST }} << 'EOF'
-          docker run $IMAGE_TO_PULL
+          docker run cr.yandex/crp8ugevmr1vj1p9f3jh/app:${{ github.event.inputs.release-version }}_latest
         EOF
     # - name: cleanup
     #   run: |
