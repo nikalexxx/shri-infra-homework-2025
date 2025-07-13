@@ -52,10 +52,13 @@ jobs:
   build-and-push-app-image:
     needs: checks
     runs-on: ubuntu-latest
-    env:
-      BASE_IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.release-version }}_fix${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set BASE_IMAGE_NAME
+        run: |
+          echo "BASE_IMAGE_NAME=${REGISTRY}/${IMAGE_NAME}:${{ github.event.inputs.release-version }}_fix${{ github.run_number }}" >> $GITHUB_ENV
+
       - name: Build app image
         run: |
           docker build -t $BASE_IMAGE_NAME .
