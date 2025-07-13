@@ -45,9 +45,9 @@ jobs:
       - id: commits
         run: |
           {
-            echo 'COMMITS<<EOF'
+            echo 'COMMITS<<ENDCOMMITS'
             git log --oneline $(git describe --tags --abbrev=0 HEAD^)..HEAD
-            echo 'EOF'
+            echo 'ENDCOMMITS'
           } >> $GITHUB_ENV
 
       - name: Comment on Release Issue
