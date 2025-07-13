@@ -57,7 +57,7 @@ jobs:
               run: |
                   COMMITS=$(git log --oneline --pretty=format:"- %h %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD)
                   if [ -z "$COMMITS" ]; then
-                    COMMITS="(no new commits)"
+                    COMMITS="(нет новых коммитов)"
                   fi
                   {
                     echo 'COMMITS<<ENDCOMMITS'
