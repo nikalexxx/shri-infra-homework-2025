@@ -63,8 +63,9 @@ jobs:
           git push origin $VERSION
 
       - name: Create GitHub Issue
-        uses: peter-evans/create-issue-from-file@v5
+        uses: dacbd/create-issue-action@main
         with:
+          token: ${{ github.token }}
           title: "Release ${{ env.VERSION }}"
           body: |
             ## Релиз ${{ env.VERSION }}
