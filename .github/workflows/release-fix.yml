@@ -84,7 +84,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git tag ${{ github.event.inputs.release-version }}_fix${{ github.run_number }}
-          git push origin $RELEASE_BRANCH
+          git push origin ${{ github.event.inputs.release-version }}_fix${{ github.run_number }}
   
   add-issue-comment:
     needs: tag
@@ -120,7 +120,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const version = process.env.VERSION;
+            const version = process.env.RELEASE_BRANCH.split('/').pop();
             const commits = process.env.COMMITS;
             const actor = context.actor;
             const date = new Date().toISOString().split("T")[0];
