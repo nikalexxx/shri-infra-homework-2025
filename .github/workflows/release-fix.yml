@@ -54,14 +54,6 @@ jobs:
           docker build -t $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }}_fix${{ github.run_number }} .
           docker tag $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }}_fix${{ github.run_number }} $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version}}_latest
 
-      - name: Login to Yandex CR
-        permissions:
-          id-token: write
-        id: loginc-cr
-        uses: yc-actions/yc-cr-login@v3
-        with:
-          yc-sa-id: ${{ secrets.YC_SA_ID }}
-
       - name: Push app images
         run: |
           docker push $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }}
