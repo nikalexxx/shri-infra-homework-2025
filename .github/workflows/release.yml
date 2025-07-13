@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/crp3t2fhnchubv3bvf81
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+
+      - id: version
+        run: echo "VERSION=${{ github.run_number }}" >> $GITHUB_ENV
+
+      - run: |
+          git checkout -b releases/${{ env.VERSION }}
+          git push origin releases/${{ env.VERSION }}
+
+      - run: |
+          docker build --platform=linux/amd64 -t $REGISTRY/app:${{ env.VERSION }} .
+          docker tag $REGISTRY/app:${{ env.VERSION }} $REGISTRY/app:${{ env.VERSION }}_latest
+
+      - name: Login to Yandex Container Registry
+        run: echo ${{ secrets.YC_CR_TOKEN }} | docker login --username oauth --password-stdin cr.yandex
+
+      - run: |
+          docker push $REGISTRY/app:${{ env.VERSION }}
+          docker push $REGISTRY/app:${{ env.VERSION }}_latest
+
+      - run: |
+          git tag v${{ env.VERSION }}
+          git push origin v${{ env.VERSION }}
+
+      - id: commits
+        run: |
+          echo "COMMITS=$(git log --oneline $(git describe --tags --abbrev=0 HEAD^)..HEAD)" >> $GITHUB_ENV
+
+      - name: Create Release Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release ${{ env.VERSION }}`,
+              body: `
+                **Дата:** ${new Date().toISOString()}
+                **Автор:** ${{ github.actor }}
+                **Версия:** ${{ env.VERSION }}
+                **Коммиты:**
+                \`\`\`
+                ${{ env.COMMITS }}
+                \`\`\`
+                **Docker-образ:** ${{ env.REGISTRY }}/app:${{ env.VERSION }}
+              `
+            })
+
+      - run: |
+          echo -e "## ${{ env.VERSION }}\n${{ env.COMMITS }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "Update CHANGELOG for ${{ env.VERSION }}"
+          git push origin releases/${{ env.VERSION }}

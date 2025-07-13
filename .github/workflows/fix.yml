@@ -1,0 +1,73 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version'
+        required: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/crp3t2fhnchubv3bvf81
+      VERSION: ${{ github.event.inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: releases/${{ env.VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run test
+
+      - id: fixnum
+        run: echo "FIXNUM=${{ github.run_number }}" >> $GITHUB_ENV
+
+      - run: |
+          docker build --platform=linux/amd64 -t $REGISTRY/app:${{ env.VERSION }}_fix${{ env.FIXNUM }} .
+          docker tag $REGISTRY/app:${{ env.VERSION }}_fix${{ env.FIXNUM }} $REGISTRY/app:${{ env.VERSION }}_latest
+
+      - name: Login to Yandex Container Registry
+        run: echo ${{ secrets.YC_CR_TOKEN }} | docker login --username oauth --password-stdin cr.yandex
+
+      - run: |
+          docker push $REGISTRY/app:${{ env.VERSION }}_fix${{ env.FIXNUM }}
+          docker push $REGISTRY/app:${{ env.VERSION }}_latest
+
+      - run: |
+          git tag v${{ env.VERSION }}_fix${{ env.FIXNUM }}
+          git push origin v${{ env.VERSION }}_fix${{ env.FIXNUM }}
+
+      - id: commits
+        run: |
+          echo "COMMITS=$(git log --oneline $(git describe --tags --abbrev=0 HEAD^)..HEAD)" >> $GITHUB_ENV
+
+      - name: Comment on Release Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issues = await github.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+            const issue = issues.data.find(i => i.title.includes('${{ env.VERSION }}'));
+            if (issue) {
+              github.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `
+                  **Дата фикса:** ${new Date().toISOString()}
+                  **Автор:** ${{ github.actor }}
+                  **Коммиты:**
+                  \`\`\`
+                  ${{ env.COMMITS }}
+                  \`\`\`
+                  **Docker-образ:** $REGISTRY/app:${{ env.VERSION }}_fix${{ env.FIXNUM }}
+                `
+              });
+            }

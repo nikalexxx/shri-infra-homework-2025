@@ -4,6 +4,8 @@
   "scripts": {
     "start": "nodemon ./src/server/index.ts",
     "build": "webpack --mode=production --node-env=production",
+    "build:docker": "docker build --platform=linux/amd64 -t app .",
+    "start:docker": "docker run --rm -p 3000:3000 app",
     "watch": "webpack --watch",
     "test": "jest",
     "lint": "eslint ./src"
