@@ -1,3 +1,7 @@
+## 13
+- 0523e27 add parallel lint and fix
+- d1a8a35 Update CHANGELOG for 12 (#12)
+
 ## 12
 - a5b4089 Update CHANGELOG for 11 (#10)
 - 0abd669 eto egor kreed
