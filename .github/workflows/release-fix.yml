@@ -47,16 +47,18 @@ jobs:
   build-and-push-app-image:
     needs: checks
     runs-on: ubuntu-latest
+    env:
+      BASE_IMAGE_NAME: $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }}_fix${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
       - name: Build app image
         run: |
-          docker build -t $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }}_fix${{ github.run_number }} .
-          docker tag $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }}_fix${{ github.run_number }} $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version}}_latest
+          docker build -t $BASE_IMAGE_NAME .
+          docker tag $BASE_IMAGE_NAME $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version}}_latest
 
       - name: Push app images
         run: |
-          docker push $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version }}
+          docker push $BASE_IMAGE_NAME
           docker push $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version}}_latest
   tag:
     needs: build-and-push-app-image
