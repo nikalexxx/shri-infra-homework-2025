@@ -1,5 +1,3 @@
-# TODO fix
-# TODO нужен сервисный акк из https://yandex.cloud/ru/docs/container-registry/tutorials/run-docker-on-vm/console#run)
 name: Deploy to Production
 
 on:
@@ -36,21 +34,19 @@ jobs:
             --password-stdin \
           cr.yandex
 
-      # # проверяе что образ существует
-      # - name: Check if image exists in registry
-      #   id: check-image
-      #   run: |
-      #     IMAGE_NAME=$DOCKER_IMAGE_NAME:${RELEASE_VERSION}_latest
-      #     docker manifest inspect $IMAGE_NAME > /dev/null 2>&1
-      #     if [ $? -eq 0 ]; then
-      #       echo "✅ Образ найден: $IMAGE_NAME"
-      #       echo "::set-output name=image_exists::true"
-      #     else
-      #       echo "❌ Образ не найден: $IMAGE_NAME"
-      #       exit 1
-      #     fi
-      #   env:
-      #     RELEASE_VERSION: ${{ inputs.release_version }}
+      # проверяет что образ существует
+      - name: Check if image exists in registry
+        id: check-image
+        run: |
+          IMAGE_NAME=${{ DOCKER_IMAGE_NAME }}:${{ VERSION }}
+          docker manifest inspect $IMAGE_NAME > /dev/null 2>&1
+          if [ $? -eq 0 ]; then
+            echo "✅ Образ найден: $IMAGE_NAME"
+            echo "::set-output name=image_exists::true"
+          else
+            echo "❌ Образ не найден: $IMAGE_NAME"
+            exit 1
+          fi
 
       - name: SSH into VM and pull/run Docker image
         uses: appleboy/ssh-action@v0.1.7
@@ -60,6 +56,8 @@ jobs:
           key: ${{ secrets.PRIVATE_KEY }}
           port: 22
           script: |
+
+            # https://yandex.cloud/ru/docs/container-registry/tutorials/run-docker-on-vm/console#run
             curl --header Metadata-Flavor:Google 169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token | \
             cut -f1 -d',' | \
             cut -f2 -d':' | \
