@@ -45,7 +45,7 @@ jobs:
         run: |
           {
             echo 'COMMITS<<ENDCOMMITS'
-            git log --oneline --pretty=format:"- %h %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD
+            git log --oneline --pretty=format:"- %h %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD || echo
             echo 'ENDCOMMITS'
           } >> $GITHUB_ENV
 
