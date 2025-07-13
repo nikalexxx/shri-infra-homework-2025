@@ -78,9 +78,12 @@ jobs:
           echo "**Автор релиза:** ${{ github.actor }}" >> issue_body.txt
           echo "**Номер версии:** ${{ env.RELEASE_VERSION }}" >> issue_body.txt
           echo "" >> issue_body.txt
-          echo "" >> issue_body.txt
           echo "**Ссылка на Docker-образ:**" >> issue_body.txt
-          echo "cr.yandex/${{ env.REGISTRY#cr.yandex/}}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}" >> issue_body.txt
+          IMAGE_PATH="${REGISTRY#cr.yandex/}/${IMAGE_NAME}:${RELEASE_VERSION}"
+          echo "cr.yandex/$IMAGE_PATH" >> issue_body.txt
+          echo "" >> issue_body.txt
+          echo "**Список коммитов с предыдущего релиза:**" >> issue_body.txt
+          git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD >> issue_body.txt
 
       - name: Create GitHub Issue
         uses: peter-evans/create-issue-from-file@v4
