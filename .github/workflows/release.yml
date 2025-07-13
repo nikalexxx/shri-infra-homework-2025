@@ -162,4 +162,3 @@ jobs:
           git config user.email "actions@github.com"
           git commit -am "docs: update changelog for release $VERSION"
           git push origin HEAD:releases/$VERSION
-          git push origin HEAD:main
