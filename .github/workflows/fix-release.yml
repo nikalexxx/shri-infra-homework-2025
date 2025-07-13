@@ -12,7 +12,7 @@ env:
   REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
   VERSION: ${{ github.event.inputs.release_version }}
   FIX_NUMBER: ${{ github.run_number }}
-  DOCKER_IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
+  DOCKER_IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/shri-infra
   YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
 
 jobs:
@@ -115,7 +115,7 @@ jobs:
 
             ### 📂 Link
 
-            [cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}](https://cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }})
+            [cr.yandex/${{ env.REGISTRY_ID }}/shri-infra:${{ env.VERSION }}](https://cr.yandex/${{ env.REGISTRY_ID }}/shri-infra:${{ env.VERSION }})
 
             `;
 

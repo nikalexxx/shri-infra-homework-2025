@@ -12,7 +12,7 @@ env:
   YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
   REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
   VERSION: ${{ inputs.release_version}}
-  DOCKER_IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
+  DOCKER_IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/shri-infra
 
 jobs:
   deploy:
