@@ -38,7 +38,7 @@ jobs:
       - name: Check if image exists in registry
         id: check-image
         run: |
-          IMAGE_NAME=${{ DOCKER_IMAGE_NAME }}:${{ VERSION }}
+          IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
           docker manifest inspect $IMAGE_NAME > /dev/null 2>&1
           if [ $? -eq 0 ]; then
             echo "✅ Образ найден: $IMAGE_NAME"
@@ -72,11 +72,35 @@ jobs:
             docker pull ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
             docker run -d  -p 3000:3000 ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
 
-      - name: Add comment to related GitHub Issue
+      - name: Find issue by release version
+        id: find_issue
         uses: actions/github-script@v7
         with:
           script: |
-            const issueNumber = ${{ env.ISSUE_NUMBER }};
+            const tagName = 'Release v' + process.env.VERSION;
+            const response = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            const issue = response.data.find(i => i.title === tagName);
+
+            if (!issue) {
+              console.log(`Issue с заголовком "${tagName}" не найден`);
+              return {};
+            }
+
+            return { issue_number: issue.number };
+          env:
+            VERSION: ${{ env.VERSION }}
+
+      - name: Add comment to related GitHub Issue
+        if: steps.find_issue.outputs.issue_number
+        uses: actions/github-script@v7
+        with:
+          script: |
             const message = `
             ✅ Релиз \`${{ inputs.release_version }}\` успешно выкачен в production!
 
@@ -86,6 +110,6 @@ jobs:
                   github.rest.issues.createComment({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    issue_number: issueNumber,
+                    issue_number: ${{ steps.find_issue.outputs.issue_number }},
                     body: message
                   });
