@@ -112,7 +112,7 @@ jobs:
             - **Fix Version:** v${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
             - **Date:** $(date +'%Y-%m-%d')
             - **Author:** ${{ github.actor }}
-            - **Docker Image:** `$DOCKER_IMAGE_NAME:${VERSION}_fix${FIX_NUMBER}`
+            - **Docker Image:** `${{ env.DOCKER_IMAGE_NAME}}:${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}`
 
             ### 📄 Changelog since last tag
 
