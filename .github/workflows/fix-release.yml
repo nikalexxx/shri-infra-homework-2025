@@ -29,13 +29,6 @@ jobs:
         with:
           ref: releases/${{ env.VERSION }}
 
-      - name: Login to Yandex Container Registry
-        run: |
-          echo ${{ secrets.YANDEX_OAUTH_TOKEN }}|docker login \
-            --username oauth \
-            --password-stdin \
-          cr.yandex
-
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
@@ -115,7 +108,7 @@ jobs:
             - **Fix Version:** v${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
             - **Date:** $(date +'%Y-%m-%d')
             - **Author:** ${{ github.actor }}
-            - **Docker Image:** `${{ env.DOCKER_IMAGE_NAME}}:${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}`
+            - **Docker Image:** ${{ env.DOCKER_IMAGE_NAME}}:${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
             ### 📄 Changelog since last tag
 
             ${{ env.COMMITS }}
