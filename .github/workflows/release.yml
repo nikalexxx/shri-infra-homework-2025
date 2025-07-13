@@ -4,7 +4,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run test
   release:
+    needs: [lint, test]
     runs-on: ubuntu-latest
     env:
       REGISTRY: cr.yandex/crp3t2fhnchubv3bvf81
@@ -16,8 +40,6 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npm run lint
-      - run: npm run test
 
       - id: version
         run: echo "VERSION=${{ github.run_number }}" >> $GITHUB_ENV
