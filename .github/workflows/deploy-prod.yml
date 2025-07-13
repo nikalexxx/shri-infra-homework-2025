@@ -66,8 +66,7 @@ jobs:
             tr -d '"' | \
             docker login --username iam --password-stdin cr.yandex
 
-            docker stop app || true
-            docker rm app || true
+            docker stop $(docker ps -q)
 
             docker pull ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}_latest
             docker run -p 3000:3000 ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
