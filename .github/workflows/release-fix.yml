@@ -89,7 +89,6 @@ jobs:
           VERSION: ${{ github.event.inputs.release-version }}
           FIX_NUMBER: ${{ github.run_number }}
         run: |
-          # Determine the previous tag
           if [ "$FIX_NUMBER" -eq 1 ]; then
             PREV_TAG="$VERSION"
           else
@@ -139,7 +138,6 @@ jobs:
             return;
           }
 
-          // Step 2: Add comment
           await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
