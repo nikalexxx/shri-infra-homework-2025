@@ -62,7 +62,7 @@ jobs:
         id: loginc-cr
         uses: yc-actions/yc-cr-login@v3
         with:
-          yc-iam-token: ${{ secrets.YC_IAM_TOKEN }}
+          yc-sa-id: ${{ secrets.YC_SA_ID }}
 
       - name: Push app images
         run: |
