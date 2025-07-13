@@ -10,11 +10,11 @@ on:
         description: 'Версия релиза (например: v1.0.0)'
         required: true
 
-  env:
-    YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
-    REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
-    VERSION: ${{ github.run_number }}
-    DOCKER_IMAGE_NAME: cr.yandex/${{ env.REGISTRY_ID }}/app
+env:
+  YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
+  REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
+  VERSION: ${{ github.run_number }}
+  DOCKER_IMAGE_NAME: cr.yandex/${{ env.REGISTRY_ID }}/app
 
 jobs:
   deploy:
