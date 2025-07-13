@@ -1,0 +1,79 @@
+name: Fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to fix (e.g., 123)'
+        required: true
+        type: string
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+    - run: npm ci
+    - run: npm run test
+  fix:
+    name: Fix
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: releases/${{ github.event.inputs.release_version }}
+        fetch-depth: 0
+    - name: Log in to Yandex Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: cr.yandex
+        username: oauth
+        password: ${{ secrets.YANDEX_CR_PASSWORD }}
+    - run: docker build . -t cr.yandex/crpi9avbm6ms2f4euv0t/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }}  -t cr.yandex/crpi9avbm6ms2f4euv0t/app:${{ github.event.inputs.release_version }}_latest
+    - run: docker image push --all-tags cr.yandex/crpi9avbm6ms2f4euv0t/app
+    - run: |
+        git config user.name "GitHub Actions Bot"
+        git config user.email "<>"
+        git tag v${{ github.event.inputs.release_version }}-fix${{ github.run_number }}
+        git push origin v${{ github.event.inputs.release_version }}-fix${{ github.run_number }}
+    - name: Find Release Issue
+      id: find-issue
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const issues = await github.paginate(github.rest.issues.listForRepo, {
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'all'
+          });
+          const releaseIssue = issues.find(issue => issue.title.includes(`Release v${{ github.event.inputs.release_version }}`));
+          return { issue_number: releaseIssue ? releaseIssue.number : null };
+    - name: Comment on Release Issue
+      if: steps.find-issue.outputs.result != '{}'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const commits = `${{ steps.commits.outputs.COMMITS }}`;
+          const commentBody = `
+            # Fix Release ${{ github.event.inputs.release_version }}-fix${{ github.run_number }}
+
+            **Date**: ${new Date().toISOString().split('T')[0]}
+            **Author**: ${{ github.actor }}
+            **Docker Image**: cr.yandex/${{ secrets.YANDEX_CR_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+
+            ## Commits
+            ${commits || 'No new commits since last release/fix'}
+          `;
+          
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: ${{ fromJSON(steps.find-issue.outputs.result).issue_number }},
+            body: commentBody
+          });
+        
