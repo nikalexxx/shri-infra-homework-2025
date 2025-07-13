@@ -12,7 +12,7 @@ jobs:
         node-version: [20.x]
         os: [ubuntu-latest]
     env:
-      REGISTRY: cr.yandex/cn1o5o99o1acodve6tud
+      REGISTRY: cr.yandex/crpfnnn98v057d07iqev
       IMAGE_NAME: app
     steps:
       - name: Checkout repository
