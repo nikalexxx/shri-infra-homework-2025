@@ -3,6 +3,7 @@ name: release-fix
 permissions:
   id-token: write
   contents: write
+  issues: write
 
 env:
   RELEASE_BRANCH: releases/${{ github.event.inputs.release-version }}

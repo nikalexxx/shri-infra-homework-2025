@@ -2,6 +2,7 @@ name: Release
 permissions:
   id-token: write
   contents: write
+  issues: write
 
 on: workflow_dispatch
 
