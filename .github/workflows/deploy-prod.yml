@@ -1,3 +1,4 @@
+# .github/workflows/deploy-prod.yml
 name: Deploy to prod
 
 on:
@@ -21,17 +22,17 @@ jobs:
           username: anuar
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # получаем токен из метаданных (обязательно с заголовком)
-            TOKEN=$(curl -s -H "Metadata-Flavor: Google" \
+           
+            TOKEN=$(curl -sH "Metadata-Flavor: Google" \
               http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token \
-              | jq -r .access_token)
+              | jq -r '.access_token')
 
-          
+           
             docker login -u iam -p "$TOKEN" cr.yandex
 
+          
             IMAGE="${IMAGE_BASE}:${{ github.event.inputs.version }}_latest"
 
-          
             docker pull "$IMAGE"
             docker stop store || true && docker rm store || true
             docker run -d --name store -p 80:3000 "$IMAGE"
