@@ -54,23 +54,59 @@ jobs:
           git tag ${RELEASE_VERSION}_fix${FIX_NUMBER}
           git push origin ${RELEASE_VERSION}_fix${FIX_NUMBER}
 
-      - name: Generate Issue body
+      - name: Find release issue number
+        id: find_issue
         run: |
-          echo "# Фикс релиза $RELEASE_VERSION (fix${FIX_NUMBER})" > issue_body.txt
-          echo "" >> issue_body.txt
-          echo "**Дата фикса:** $(date +'%Y-%m-%d')" >> issue_body.txt
-          echo "**Автор фикса:** ${{ github.actor }}" >> issue_body.txt
-          echo "**Версия релиза:** $RELEASE_VERSION" >> issue_body.txt
-          echo "**Номер фикса:** $FIX_NUMBER" >> issue_body.txt
-          echo "" >> issue_body.txt
-          echo "**Список изменений (коммиты с предыдущего релиза):**" >> issue_body.txt
-          git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD >> issue_body.txt
-          echo "" >> issue_body.txt
-          echo "**Ссылка на Docker-образ:**" >> issue_body.txt
-          echo "$REGISTRY/$IMAGE_NAME:${RELEASE_VERSION}_fix${FIX_NUMBER}" >> issue_body.txt
+          ISSUE_NUMBER=$(gh issue list --state open --search "Release $RELEASE_VERSION in:title" --json number -q '.[0].number')
+          echo "::set-output name=ISSUE_NUMBER::$ISSUE_NUMBER"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create GitHub Issue
-        uses: peter-evans/create-issue-from-file@v4
-        with:
-          title: "Fix ${{ env.RELEASE_VERSION }} (fix${{ env.FIX_NUMBER }})"
-          content-filepath: ./issue_body.txt
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "::set-output name=PREV_TAG::$PREV_TAG"
+
+      - name: Generate commit list
+        id: commits
+        run: |
+          if [ -z "${{ steps.prev_tag.outputs.PREV_TAG }}" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD)
+          else
+            COMMITS=$(git log ${{ steps.prev_tag.outputs.PREV_TAG }}..HEAD --pretty=format:"- %s (%h)")
+          fi
+          echo "::set-output name=commits::$COMMITS"
+
+      - name: Add comment to release issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ steps.find_issue.outputs.ISSUE_NUMBER }} \
+            --body "Fix ${{ env.RELEASE_VERSION }} (fix${{ env.FIX_NUMBER }})
+            Автор: ${{ github.actor }}
+            Список коммитов:
+            ${{ steps.commits.outputs.commits }}
+
+            Docker-образ: cr.yandex/crpfnnn98v057d07iqev/app:${{ env.RELEASE_VERSION }}_fix${{ env.FIX_NUMBER }}"
+
+      # - name: Generate Issue body
+      #   run: |
+      #     echo "# Фикс релиза $RELEASE_VERSION (fix${FIX_NUMBER})" > issue_body.txt
+      #     echo "" >> issue_body.txt
+      #     echo "**Дата фикса:** $(date +'%Y-%m-%d')" >> issue_body.txt
+      #     echo "**Автор фикса:** ${{ github.actor }}" >> issue_body.txt
+      #     echo "**Версия релиза:** $RELEASE_VERSION" >> issue_body.txt
+      #     echo "**Номер фикса:** $FIX_NUMBER" >> issue_body.txt
+      #     echo "" >> issue_body.txt
+      #     echo "**Список изменений (коммиты с предыдущего релиза):**" >> issue_body.txt
+      #     git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD >> issue_body.txt
+      #     echo "" >> issue_body.txt
+      #     echo "**Ссылка на Docker-образ:**" >> issue_body.txt
+      #     echo "$REGISTRY/$IMAGE_NAME:${RELEASE_VERSION}_fix${FIX_NUMBER}" >> issue_body.txt
+
+      # - name: Create GitHub Issue
+      #   uses: peter-evans/create-issue-from-file@v4
+      #   with:
+      #     title: "Fix ${{ env.RELEASE_VERSION }} (fix${{ env.FIX_NUMBER }})"
+      #     content-filepath: ./issue_body.txt
