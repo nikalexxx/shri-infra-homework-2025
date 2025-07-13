@@ -53,7 +53,7 @@ jobs:
       - run: npm run test
 
       # ───────── docker login через IAM-токен ─────────
-      - run: echo "${{ secrets.YC_IAM_TOKEN }}" | docker login -u iam --password-stdin cr.yandex
+      - run: echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login -u iam --password-stdin cr.yandex
 
       - run: |
           docker build -t ${IMAGE}:${VERSION} -t ${IMAGE}:${VERSION}_latest .
