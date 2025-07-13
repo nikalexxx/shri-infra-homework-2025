@@ -1,0 +1,30 @@
+name: Release
+on: workflow_dispatch          
+
+env:
+  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Build image
+        run: |
+          docker build -t $REGISTRY/app:${{ github.run_number }} \
+                       -t $REGISTRY/app:${{ github.run_number }}_latest .
+      - name: Login to YCR
+        uses: yc-actions/yc-cr-login@v1
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SERVICE_ACCOUNT_KEY }}
+
+      - name: Push
+        run: docker push --all-tags $REGISTRY/app
