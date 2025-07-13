@@ -9,12 +9,17 @@ on:
         type: string
         description: 'Версия релиза (например: v1.0.0)'
         required: true
+      issue_number:
+        type: integer
+        description: 'Номер Issue, с которым связан релиз'
+        required: false
 
 env:
   YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
   REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
   VERSION: ${{ github.run_number }}
   DOCKER_IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
+  ISSUE_NUMBER: ${{ github.event.inputs.issue_number || 1 }}
 
 jobs:
   deploy:
@@ -68,12 +73,19 @@ jobs:
             docker run -p 3000:3000 ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
 
       - name: Add comment to related GitHub Issue
-        uses: mikeal/github-comment@v1
+        uses: actions/github-script@v7
         with:
-          issue: ${{ github.event.inputs.issue_number || 123 }}  # можно сделать инпутом
-          token: ${{ secrets.GITHUB_TOKEN }}
-          message: |
-            ✅ Релиз `${{ env.VERSION }}` успешно выкачен в production!
-            
-            **Дата:** $(date +"%Y-%m-%d %T")
+          script: |
+            const issueNumber = ${{ env.ISSUE_NUMBER }};
+            const message = `
+            ✅ Релиз \`${{ inputs.release_version }}\` успешно выкачен в production!
+
+            **Дата:** ${new Date().toISOString()}
             **Кем запущен:** @${{ github.actor }}
+                  `;
+                  github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                    body: message
+                  });
