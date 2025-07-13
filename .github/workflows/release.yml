@@ -82,6 +82,8 @@ jobs:
           echo "**Автор релиза:** ${{ github.actor }}" >> issue_body.txt
           echo "**Номер версии:** ${{ env.RELEASE_VERSION }}" >> issue_body.txt
           echo "" >> issue_body.txt
+          echo "**Список изменений (коммиты с предыдущего релиза):**" >> changelog_entry.txt
+          git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD >> changelog_entry.txt
           echo "**Ссылка на Docker-образ:**" >> issue_body.txt
           echo "$REGISTRY/$IMAGE_NAME:${RELEASE_VERSION}" >> issue_body.txt
 
