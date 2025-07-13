@@ -109,12 +109,3 @@ jobs:
           git add CHANGELOG.md
           git commit -m "update changelog for v$VERSION"
           git push origin HEAD:releases/${{ env.VERSION }}
-
-      - name: Commit changelog to main
-        run: |
-          git checkout main
-          git pull origin main
-          git checkout releases/${{ env.VERSION }} -- CHANGELOG.md
-          git add CHANGELOG.md
-          git commit -m "Sync changelog from release $VERSION"
-          git push origin main
