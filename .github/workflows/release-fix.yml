@@ -64,11 +64,10 @@ jobs:
           docker build -t $BASE_IMAGE_NAME .
           docker tag $BASE_IMAGE_NAME $REGISTRY/$IMAGE_NAME:${{ github.event.inputs.release-version}}_latest
 
-      - name: Login to Yandex CR
-        id: login-cr
+      - name: Login to Yandex Container Registry
         uses: yc-actions/yc-cr-login@v3
         with:
-          yc-sa-id: ${{ secrets.YC_SA_ID }}
+          yc-sa-json-credentials: ${{ secrets.YC_SA_KEY_JSON }}
 
       - name: Push app images
         run: |
