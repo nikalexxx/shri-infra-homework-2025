@@ -70,7 +70,7 @@ jobs:
         uses: dacbd/create-issue-action@main
         with:
           token: ${{ github.token }}
-          title: "Release ${{ env.VERSION }}"
+          title: "Релиз ${{ env.VERSION }}"
           body: |
             ## Релиз ${{ env.VERSION }}
 
