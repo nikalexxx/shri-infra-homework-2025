@@ -1,89 +1,72 @@
-name: hotfix
+name: release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Базовый релиз (1, 2, …)"
-        required: true     
+  workflow_dispatch: {}          # ручной запуск
+
+env:
+  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
 
 jobs:
-  fix:
+  build-release:
     runs-on: ubuntu-latest
 
-    env:                
-      IMAGE_BASE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
-
     steps:
-
       - uses: actions/checkout@v4
-        with:
-          ref: releases/${{ inputs.version }}
-          fetch-depth: 0         
+        with: { fetch-depth: 0 }          # теги нужны для changelog
 
+      # ---------- версия = номер запуска ----------
+      - id: ver
+        run: echo "VER=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      # ---------- Node build ----------
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
+        with: { node-version: 20, cache: npm }
       - run: npm ci
       - run: npm run lint
       - run: npm test -- --watchAll=false
+      - run: npm run build
 
-      - id: calc
-        run: echo "FIX=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-
+      # ---------- Docker ----------
       - name: docker login
-        run: |
-          echo "${{ secrets.YC_IAM_TOKEN }}" | \
-            docker login -u iam --password-stdin cr.yandex
+        run: echo "${{ secrets.YC_IAM_TOKEN }}" | docker login -u iam --password-stdin cr.yandex
 
       - name: build & push image
-        env:
-          IMG_FIX: ${{ env.IMAGE_BASE }}:${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }}
-          IMG_LATEST: ${{ env.IMAGE_BASE }}:${{ inputs.version }}_latest
         run: |
-          docker build -t "$IMG_FIX" -t "$IMG_LATEST" .
-          docker push "$IMG_FIX"
-          docker push "$IMG_LATEST"
+          docker build -t $REGISTRY:${{ steps.ver.outputs.VER }} \
+                       -t $REGISTRY:${{ steps.ver.outputs.VER }}_latest .
+          docker push --all-tags $REGISTRY
 
-      - name: tag git
-        env:
-          TAG: v${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }}
+      # ---------- git branch releases/<ver> ----------
+      - name: create release branch + tag
         run: |
-          git config --global user.name  "github-actions[bot]"
-          git config --global user.email "ci@example.com"
-          git tag "$TAG"
-          git push origin "$TAG"
+          git config user.email "ci@example.com"
+          git config user.name  "github-actions[bot]"
+          git switch -c releases/${{ steps.ver.outputs.VER }}
+          git push -u origin HEAD
+          git tag v${{ steps.ver.outputs.VER }}
+          git push origin v${{ steps.ver.outputs.VER }}
 
-      - name: collect commit log
-        id: commits
+      # ---------- CHANGELOG.md ----------
+      - id: log
         run: |
           PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREV" ]; then
-            git log --pretty='- %s' ${PREV}..HEAD > log.txt
-          else
-            git log --pretty='- %s' > log.txt
-          fi
-          echo "LIST<<EOF" >> $GITHUB_OUTPUT
-          cat log.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          COMMITS=$(git log --pretty='- %s' ${PREV:+${PREV}..HEAD})
+          { printf '## %s (%s)\n%s\n\n' \
+              "${{ steps.ver.outputs.VER }}" "$(date +%Y-%m-%d)" "$COMMITS"
+            cat CHANGELOG.md ; } > _chg && mv _chg CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "docs: changelog for ${{ steps.ver.outputs.VER }}"
+          git push origin HEAD
+          echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS"     >> $GITHUB_OUTPUT
+          echo "EOF"          >> $GITHUB_OUTPUT
 
-      - name: comment in release issue
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          VER: ${{ inputs.version }}
-          FIX: ${{ steps.calc.outputs.FIX }}
-          IMG_FIX: ${{ env.IMAGE_BASE }}:${{ inputs.version }}_fix${{ steps.calc.outputs.FIX }}
+      # ---------- GitHub issue ----------
+      - name: open release issue
+        env: { GH_TOKEN: ${{ secrets.GH_TOKEN }} }
         run: |
-          ISSUE=$(gh issue list --repo "$GITHUB_REPOSITORY" \
-                   --search "Release $VER" --json number -q '.[0].number')
-          if [ -n "$ISSUE" ]; then
-            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body \
-"**🛠 Fix $FIX** — $(date)
-**Образ:** \`$IMG_FIX\`
+          gh issue create \
+            --title "Release ${{ steps.ver.outputs.VER }}" \
+            --body "**Дата:** $(date)\n**Коммиты:**\n${{ steps.log.outputs.COMMITS }}" \
+            --label release
 
-${{ steps.commits.outputs.LIST }}"
-          else
-            echo "⚠️  Issue 'Release $VER' не найден."
-          fi
