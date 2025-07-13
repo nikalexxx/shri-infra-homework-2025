@@ -91,11 +91,12 @@ jobs:
 
             if (!issue) {
               console.log(`Issue с заголовком "${tagName}" не найден`);
-              return {};
+              core.setOutput('issue_number', '');
+            } else {
+              console.log(`Найден Issue: #${issue.number}`);
+              core.setOutput('issue_number', String(issue.number));
             }
-
-            console.log(`Найден Issue: #${issue.number}`);
-            return { issue_number: String(issue.number) };
+            return issue ? { number: issue.number } : {};
 
       - name: Debug Output issue number
         run: |
