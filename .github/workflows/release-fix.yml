@@ -1,0 +1,112 @@
+name: Release Fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to fix'
+        required: true
+        type: string
+
+env:
+  YC_REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+  IMAGE_NAME: app
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: releases/${{ inputs.release_version }}
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linter
+      run: npm run lint
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Run tests
+      run: npm run test
+
+  fix:
+    needs: check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: releases/${{ inputs.release_version }}
+        fetch-depth: 0
+    
+    - name: Setup Docker
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Yandex Cloud Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: cr.yandex
+        username: json_key
+        password: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ env.YC_REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ inputs.release_version }}_fix${{ github.run_number }}
+          ${{ env.YC_REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ inputs.release_version }}_latest
+    
+    - name: Create Git tag
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git tag ${{ inputs.release_version }}_fix${{ github.run_number }}
+        git push origin ${{ inputs.release_version }}_fix${{ github.run_number }}
+    
+    - name: Get commits since last tag
+      id: commits
+      run: |
+        LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+        if [ -z "$LAST_TAG" ]; then
+          COMMITS=$(git log --oneline --pretty=format:"- %s (%h)")
+        else
+          COMMITS=$(git log --oneline --pretty=format:"- %s (%h)" $LAST_TAG..HEAD)
+        fi
+        echo "commits<<EOF" >> $GITHUB_OUTPUT
+        echo "$COMMITS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    
+    - name: Get release issue number
+      id: issue
+      run: |
+        ISSUE_NUMBER=$(gh issue list --search "Release ${{ inputs.release_version }}" --json number --jq '.[0].number')
+        echo "number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Comment on release issue
+      run: |
+        gh issue comment ${{ steps.issue.outputs.number }} --body "## Fix Information
+        
+        **Fix Date:** $(date)
+        **Fix Author:** ${{ github.actor }}
+        
+        ## Commits:
+        ${{ steps.commits.outputs.commits }}
+        
+        ## Docker Image:
+        \`${{ env.YC_REGISTRY }}/${{ secrets.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ inputs.release_version }}_fix${{ github.run_number }}\`"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
