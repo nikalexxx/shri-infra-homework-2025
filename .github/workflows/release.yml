@@ -62,7 +62,10 @@ jobs:
           git tag $VERSION
           git push origin $VERSION
 
-          
+      - name: Get current date
+        id: date
+        run: echo "value=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Issue
         uses: dacbd/create-issue-action@main
         with:
@@ -71,7 +74,7 @@ jobs:
           body: |
             ## Релиз ${{ env.VERSION }}
 
-            - Дата: $(date +'%Y-%m-%d')
+            - Дата: ${{ steps.date.outputs.value }}
             - Автор: @${{ github.actor }}
 
             ### Список изменений:
@@ -84,7 +87,7 @@ jobs:
 
       - name: Update CHANGELOG.md
         run: |
-          echo "## $VERSION - $(date +'%Y-%m-%d')" > .changelog.tmp
+          echo "## $VERSION - ${{ steps.date.outputs.value }}" > .changelog.tmp
           echo "${{ steps.commits.outputs.log }}" >> .changelog.tmp
           echo "" >> .changelog.tmp
           cat CHANGELOG.md >> .changelog.tmp
@@ -95,3 +98,12 @@ jobs:
           git add CHANGELOG.md
           git commit -m "update changelog for v$VERSION"
           git push origin HEAD:releases/${{ env.VERSION }}
+
+      - name: Commit changelog to main
+        run: |
+          git checkout main
+          git pull origin main
+          git checkout releases/${{ env.VERSION }} -- CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "Sync changelog from release $VERSION"
+          git push origin main
