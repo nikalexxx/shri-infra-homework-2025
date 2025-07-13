@@ -10,7 +10,6 @@ on:
 
 env:
   REGISTRY: cr.yandex/crplgh0146jj4ahh90mc
-  REGISTRY_ID: crplgh0146jj4ahh90mc
   IMAGE_NAME: app
 
 jobs:
@@ -18,25 +17,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check if Docker image exists
-        env:
-          YC_TOKEN: ${{ secrets.YC_OAUTH_TOKEN }}
-          IMAGE_TAG: ${{ inputs.release }}_latest
+      - name: Docker login to Yandex Registry
+        run: echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+
+      - name: Check if Docker image exists using Docker CLI
         run: |
-          echo "Checking for image: $IMAGE_NAME:$IMAGE_TAG"
-
-          RESPONSE=$(curl -s -H "Authorization: Bearer $YC_TOKEN" \
-            "https://container-registry.api.cloud.yandex.net/container-registry/v1/images?registryId=$REGISTRY_ID&name=$IMAGE_NAME&tag=$IMAGE_TAG")
-
-          echo "Registry response: $RESPONSE"
-
-          IMAGE_ID=$(echo "$RESPONSE" | jq -r '.images[0].id // empty')
-
-          if [ -z "$IMAGE_ID" ]; then
-            echo "Image '$IMAGE_NAME:$IMAGE_TAG' not found in registry"
-            exit 1
+          echo "Checking for image: $REGISTRY/$IMAGE_NAME:${{ inputs.release }}_latest"
+          if docker manifest inspect $REGISTRY/$IMAGE_NAME:${{ inputs.release }}_latest > /dev/null; then
+            echo "Image exists"
           else
-            echo "Image exists: ID = $IMAGE_ID"
+            echo "Image does not exist in registry"
+            exit 1
           fi
 
       - name: Deploy via SSH
@@ -46,6 +37,7 @@ jobs:
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
           script: |
+            docker login --username oauth --password ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
             docker pull $REGISTRY/$IMAGE_NAME:${{ inputs.release }}_latest
             docker stop app || true
             docker rm app || true
