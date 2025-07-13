@@ -19,7 +19,7 @@ jobs:
           key:      ${{ secrets.SSH_KEY }}
           script: |
             VER="${{ github.event.inputs.version }}"
-            IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${VER}_latest"
+            IMAGE="cr.yandex/${{ secrets.YC_REGISTRY }}/app:${VER}_latest"
 
             echo ">>> docker login"
             docker login -u oauth -p '${{ secrets.YC_OAUTH_TOKEN }}' cr.yandex
