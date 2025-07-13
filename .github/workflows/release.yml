@@ -1,74 +1,135 @@
 name: release
 
 on:
-  workflow_dispatch: {}          # ручной запуск
-
-env:
-  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+  push:
+    tags:
+      - 'releases/*'
+  workflow_dispatch: {}
 
 jobs:
   build-release:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+
+    env:
+      VERSION_RAW: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.run_number }}
+      IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app   # ← 1. правильный secret
 
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }          # теги нужны для changelog
+        with:
+          ref: main
+          fetch-depth: 0
 
-      # ---------- версия = номер запуска ----------
-      - id: ver
-        run: echo "VER=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+      - name: sync main
+        run: git pull --ff-only origin main
 
-      # ---------- Node build ----------
+      - name: normalize version
+        run: |
+          VER=${VERSION_RAW#releases/}
+          echo "VERSION=$VER" >>"$GITHUB_ENV"
+
+      - name: ensure release branch
+        run: |
+          if git show-ref --quiet refs/heads/releases/${VERSION}; then
+            git switch releases/${VERSION}
+          else
+            git switch -c releases/${VERSION}
+          fi
+          git push -u origin HEAD
+
+      - name: set git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
+        with:
+          node-version: 20
+          cache: npm
+
       - run: npm ci
       - run: npm run lint
-      - run: npm test -- --watchAll=false
-      - run: npm run build
+      - run: npm run test
 
-      # ---------- Docker ----------
-      - name: docker login
-        run: echo "${{ secrets.YC_IAM_TOKEN }}" | docker login -u iam --password-stdin cr.yandex
+      # ───────── docker login через IAM-токен ─────────
+      - run: echo "${{ secrets.YC_IAM_TOKEN }}" | docker login -u iam --password-stdin cr.yandex
 
-      - name: build & push image
+      - run: |
+          docker build -t ${IMAGE}:${VERSION} -t ${IMAGE}:${VERSION}_latest .
+          docker push ${IMAGE}:${VERSION}
+          docker push ${IMAGE}:${VERSION}_latest
+
+      - name: create git tag
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          docker build -t $REGISTRY:${{ steps.ver.outputs.VER }} \
-                       -t $REGISTRY:${{ steps.ver.outputs.VER }}_latest .
-          docker push --all-tags $REGISTRY
+          git tag releases/${VERSION}
+          git push origin releases/${VERSION}
 
-      # ---------- git branch releases/<ver> ----------
-      - name: create release branch + tag
+      - name: define LAST_TAG
+        id: lasttag
+        run: echo "LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")" >> $GITHUB_OUTPUT
+
+      - name: prepend CHANGELOG
+        id: changelog
         run: |
-          git config user.email "ci@example.com"
-          git config user.name  "github-actions[bot]"
-          git switch -c releases/${{ steps.ver.outputs.VER }}
-          git push -u origin HEAD
-          git tag v${{ steps.ver.outputs.VER }}
-          git push origin v${{ steps.ver.outputs.VER }}
+          set -euo pipefail
+          LAST_TAG="${{ steps.lasttag.outputs.LAST_TAG }}"
+          COMMITS=$(git log --pretty=format:'- %s' ${LAST_TAG:+${LAST_TAG}..HEAD})
 
-      - id: log
-        run: |
-          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          COMMITS=$(git log --pretty='- %s' ${PREV:+${PREV}..HEAD})
+          TMP=$(mktemp)
+          {
+            echo "## ${VERSION} ($(date +%Y-%m-%d))"
+            echo "${COMMITS}"
+            echo
+            cat CHANGELOG.md
+          } > "$TMP"
+          mv "$TMP" CHANGELOG.md
 
-          { printf '## %s (%s)\n%s\n\n' \
-              "${{ steps.ver.outputs.VER }}" "$(date +%Y-%m-%d)" "$COMMITS"
-            cat CHANGELOG.md; } > _chg && mv _chg CHANGELOG.md
+          if ! git diff --quiet CHANGELOG.md; then
+            git add CHANGELOG.md
+            git commit -m "chore: changelog for ${VERSION}"
+            git push origin HEAD
+          fi
 
-          git add CHANGELOG.md
-          git commit -m "docs: changelog for ${{ steps.ver.outputs.VER }}"
-          git push origin HEAD
+          printf 'COMMITS<<EOF\n%s\nEOF\n' "${COMMITS}" >> "$GITHUB_OUTPUT"
 
-          echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS"     >> $GITHUB_OUTPUT
-          echo "EOF"          >> $GITHUB_OUTPUT
-
-      # ---------- GitHub issue ----------
       - name: open release issue
-        env: { GH_TOKEN: ${{ secrets.GH_TOKEN }} }
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          BODY=$(cat <<EOF
+          **Дата:** $(date)
+          **Автор:** ${{ github.actor }}
+          **Версия:** ${VERSION}
+
+          **Коммиты:**
+          ${{ steps.changelog.outputs.COMMITS }}
+
+          **Образ:** \`cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${VERSION}\`
+          EOF
+          )
           gh issue create \
-            --title "Release ${{ steps.ver.outputs.VER }}" \
-            --body "**Дата:** $(date)\n**Коммиты:**\n${{ steps.log.outputs.COMMITS }}" \
+            --title "Release ${VERSION}" \
+            --body "$BODY" \
             --label release
 
+      - name: open PR back to main
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          PR_URL=$(gh pr create \
+                    --head "releases/${VERSION}" \
+                    --base "main" \
+                    --title "Merge release ${VERSION} to main" \
+                    --body "CI-autogenerated PR for release ${VERSION}")
+          echo "pr=$PR_URL" >> $GITHUB_OUTPUT
+          echo "Opened $PR_URL"
+
+      - name: enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          gh pr merge "${{ steps.pr.outputs.pr }}" \
+            --merge --auto --delete-branch
