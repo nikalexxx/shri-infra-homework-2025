@@ -101,6 +101,10 @@ jobs:
 
           echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
 
+      - name: Получить дату
+        id: date
+        run: echo "DATE=$(date +%F)" >> $GITHUB_OUTPUT
+
       - name: Add comment to issue
         uses: peter-evans/create-or-update-comment@v4
         with:
@@ -109,7 +113,7 @@ jobs:
           body: |
             **Фикс релиза ${{ env.VERSION }}**
             
-            **Дата:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            **Дата:** ${{ steps.date.outputs.DATE }}
             **Автор:** @${{ github.actor }}
             ```
             
