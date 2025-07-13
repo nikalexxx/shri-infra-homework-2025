@@ -69,6 +69,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Comment on release issue
+        if: steps.issue.outputs.number != ''
         run: |
           gh issue comment ${{ steps.issue.outputs.number }} --body "## Production Deployment
 
