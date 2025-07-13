@@ -72,7 +72,7 @@ jobs:
             fi
 
             docker pull ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}_latest
-            docker run -p 3000:3000 ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
+            docker run -d  -p 3000:3000 ${{ env.DOCKER_IMAGE_NAME }}:${{ env.VERSION }}
 
       - name: Add comment to related GitHub Issue
         uses: actions/github-script@v7
