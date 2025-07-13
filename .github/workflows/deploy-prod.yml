@@ -1,0 +1,26 @@
+name: Deploy to prod
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "release number (e.g. 1)"
+        required: true
+
+env:
+  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull & run on server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            docker pull $REGISTRY/app:${{ github.event.inputs.version }}_latest
+            docker stop store || true && docker rm store || true
+            docker run -d --name store -p 80:3000 \
+              $REGISTRY/app:${{ github.event.inputs.version }}_latest
