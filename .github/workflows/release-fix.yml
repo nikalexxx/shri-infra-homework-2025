@@ -119,7 +119,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const version = process.env.VERSION;
+            const version = process.env.RELEASE_BRANCH.split('/').pop();
             const commits = process.env.COMMITS;
             const actor = context.actor;
             const date = new Date().toISOString().split("T")[0];
