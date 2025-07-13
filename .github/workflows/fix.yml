@@ -1,94 +1,119 @@
 name: Fix Release
 
 on:
-    workflow_dispatch:
-        inputs:
-            version:
-                description: "Версия релиза"
-                required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия релиза"
+        required: true
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  REGISTRY_URL: cr.yandex.ru
+  REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+  IMAGE_NAME: app
+  REGISTRY_IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
 
 jobs:
-    fix:
-        runs-on: ubuntu-latest
+  fix:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.version }}
+      FIX_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout to release branch
+        run: |
+          git fetch origin releases/${{ env.VERSION }}
+          git checkout releases/${{ env.VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run type check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
+      - name: Authenticate YC CLI
+        run: |
+          yc config set token "${{ secrets.YC_OAUTH_TOKEN }}"
+          yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
+          yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
+
+      - name: Configure Docker to use Yandex credential helper
+        run: |
+          yc container registry configure-docker
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }} .
+
+      - name: Tag Docker images
+        run: |
+          docker tag ${{ env.IMAGE_NAME }} ${{ env.REGISTRY_IMAGE }}:${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
+          docker tag ${{ env.IMAGE_NAME }} ${{ env.REGISTRY_IMAGE }}:${{ env.VERSION }}_latest
+
+      - name: Push Docker images
+        run: |
+          docker push ${{ env.REGISTRY_IMAGE }}:${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
+          docker push ${{ env.REGISTRY_IMAGE }}:${{ env.VERSION }}_latest
+
+      - name: Create git tag for fix
+        run: |
+          git tag ${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
+          git push origin ${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
+
+      - name: Generate commit list since last tag
+        id: changelog
+        run: |
+          git fetch --tags
+          PREV=$(git tag --sort=-creatordate | grep -E "^${{ env.VERSION }}(_fix[0-9]+)?$" | head -n1)
+          git log $PREV..HEAD --oneline > commits.txt
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          cat commits.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Find release issue
+        id: find_issue
         env:
-            REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
-            VERSION: ${{ github.event.inputs.version }}
-            FIX: ${{ github.run_number }}
-            REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
-            IMAGE_NAME: app
-        steps:
-            - uses: actions/checkout@v4
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          ISSUE_NUMBER=$(gh issue list --repo ${{ github.repository }} --state open --json number,title --limit 100 \
+            | jq -r --arg ver "${{ env.VERSION }}" '.[] | select(.title==$ver) | .number')
 
-            - name: Setup Node
-              uses: actions/setup-node@v4
-              with:
-                  node-version: 18
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "Ошибка: Issue с заголовком '${{ env.VERSION }}' не найдено"
+            exit 1
+          fi
 
-            - run: npm ci
-            - run: npm run test
+          echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
 
-            - name: Build Docker (Fix)
-              run: docker build -t $REGISTRY:${VERSION}_fix${FIX} -t $REGISTRY:${VERSION}_latest .
-
-            - name: Install Yandex Cloud CLI
-              run: |
-                  curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-                  echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
-
-            - name: Authenticate YC CLI
-              run: |
-                  yc config set token "${{ secrets.YC_OAUTH_TOKEN }}"
-                  yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
-                  yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
-
-            - name: Push Docker images to Yandex Container Registry
-              run: |
-                  docker push cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}
-                  docker push cr.yandex/${{ env.REGISTRY_ID }}/$IMAGE_NAME:${{ env.VERSION }}_latest
-
-            - name: Append to issue
-              run: |
-                  gh issue comment <номер_релизного_issue> \
-                    --body "**Фикс от $(date)**\nАвтор: ${{ github.actor }}\nDocker: $REGISTRY:${VERSION}_fix${FIX}"
-
-            - name: Найти номер issue по заголовку (версии)
-              id: find_issue
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  VERSION="${{ github.event.inputs.version }}"
-                  if ! command -v gh &> /dev/null; then
-                  echo "gh cli не установлен, ставим..."
-                  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-                  sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-                  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-                  sudo apt update
-                  sudo apt install gh -y
-                  fi
-
-                  ISSUE_NUMBER=$(gh issue list --repo ${{ github.repository }} --state open --json number,title --limit 100 \
-                  | jq -r --arg ver "$VERSION" '.[] | select(.title==$ver) | .number')
-
-                  if [ -z "$ISSUE_NUMBER" ]; then
-                  echo "Ошибка: Issue с заголовком '$VERSION' не найдено"
-                  exit 1
-                  fi
-
-                  echo "Найден issue номер: $ISSUE_NUMBER"
-                  echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
-
-            - name: Получить дату
-              id: date
-              run: echo "DATE=$(date +%F)" >> $GITHUB_OUTPUT
-
-            - name: 📊 Добавление комментария в GitHub Issue
-              uses: peter-evans/create-or-update-comment@v4
-              with:
-                  token: ${{ github.token }}
-                  issue-number: ${{ steps.find_issue.outputs.issue_number }}
-                  body: |
-                      Фикс:
-                      🌐 Релиз **${{ github.event.inputs.version }}** fixed
-                      📅 Дата: ${{ steps.date.outputs.DATE }}
-                      👤 Автор: @${{ github.actor }}  
-                      📦 Образ: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest`
+      - name: Add comment to issue
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ github.token }}
+          issue-number: ${{ steps.find_issue.outputs.issue_number }}
+          body: |
+            **Фикс релиза ${{ env.VERSION }}**
+            
+            **Дата:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            **Автор:** @${{ github.actor }}
+            ```
+            
+            **Docker образ:** `${{ env.REGISTRY_IMAGE }}:${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}`
