@@ -1,0 +1,54 @@
+name: Hotfix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to fix (e.g. 3)"
+        required: true
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up
+        run: |
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          echo "FIX=${{ github.run_number }}" >> $GITHUB_ENV
+          echo "REGISTRY=cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app" >> $GITHUB_ENV
+
+      - run: git checkout releases/$VERSION
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+      - name: Build and tag
+        run: |
+          docker build -t $REGISTRY:${VERSION}_fix${FIX} .
+          docker tag $REGISTRY:${VERSION}_fix${FIX} $REGISTRY:${VERSION}_latest
+
+      - run: echo "${{ secrets.YC_CR_PASSWORD }}" | docker login -u oauth --password-stdin cr.yandex
+
+      - run: |
+          docker push $REGISTRY:${VERSION}_fix${FIX}
+          docker push $REGISTRY:${VERSION}_latest
+
+      - run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag v${VERSION}_fix${FIX}
+          git push origin v${VERSION}_fix${FIX}
+
+      - name: Comment on Issue
+        run: |
+          gh issue comment $(gh issue list --search "Release v$VERSION" --json number --jq '.[0].number') \
+            --body "🛠 Fix #$FIX for release v$VERSION by @${{ github.actor }} on $(date -u)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,56 @@
+name: Release Application
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+      REGISTRY: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+      - name: Create release branch
+        run: |
+          git checkout -b releases/${VERSION}
+          git push origin releases/${VERSION}
+
+      - name: Build Docker image
+        run: |
+          docker build -t $REGISTRY:$VERSION .
+          docker tag $REGISTRY:$VERSION $REGISTRY:${VERSION}_latest
+
+      - name: Login to Yandex Container Registry
+        run: echo "${{ secrets.YC_CR_PASSWORD }}" | docker login -u oauth --password-stdin cr.yandex
+
+      - name: Push Docker images
+        run: |
+          docker push $REGISTRY:$VERSION
+          docker push $REGISTRY:${VERSION}_latest
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git tag v$VERSION
+          git push origin v$VERSION
+
+      - name: Create GitHub Issue
+        run: |
+          echo "Release $VERSION by ${{ github.actor }} on $(date -u)" > body.txt
+          gh issue create --title "Release v$VERSION" --body-file body.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

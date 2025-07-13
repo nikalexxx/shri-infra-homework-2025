@@ -1,0 +1,58 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to deploy"
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set environment
+        run: |
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          echo "REGISTRY=cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app" >> $GITHUB_ENV
+
+      - name: Check image existence
+        run: |
+          echo "${{ secrets.YC_CR_PASSWORD }}" | docker login -u oauth --password-stdin cr.yandex
+          docker manifest inspect $REGISTRY:${VERSION}_latest > /dev/null || \
+            (echo "::error::Image not found" && exit 1)
+
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          envs: VERSION,REGISTRY
+          script: |
+            docker login cr.yandex -u oauth -p "${{ secrets.YC_CR_PASSWORD }}"
+            docker pull $REGISTRY:${VERSION}_latest
+
+            docker stop shri-infra || true
+            docker rm shri-infra || true
+
+            docker run -d \
+              --name shri-infra \
+              --restart unless-stopped \
+              -p 80:3000 \
+              -e NODE_ENV=production \
+              $REGISTRY:${VERSION}_latest
+
+      - name: Verify app is up
+        run: |
+          sleep 10
+          curl -sSf http://${{ secrets.VM_HOST }}/hw/store > /dev/null || \
+            (echo "::error::App is not responding" && exit 1)
+
+      - name: Comment on GitHub Issue
+        run: |
+          gh issue comment $(gh issue list --search "Release v$VERSION" --json number --jq '.[0].number') \
+            --body "🚀 Release **v$VERSION** deployed to production\n🌍 http://${{ secrets.VM_HOST }}\n🕒 $(date -u)\n👤 @${{ github.actor }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
