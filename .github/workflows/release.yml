@@ -1,4 +1,4 @@
-  name: Manual Release Workflow
+  name: 2. Manual Release Workflow
 
   on:
     workflow_dispatch:
@@ -31,8 +31,7 @@
             git config --global user.name "GitHub Actions"
             git config --global user.email "actions@github.com"
 
-        # - создаёт тег, с номером текущей версии, который указывает на последний коммит в главной ветке
-        # TODO fix каежтся что тег это просто номер запуска у анс
+        # находим предыдущий тег
         - name: Get previous tag
           id: prev_tag
           run: |
@@ -51,16 +50,6 @@
             docker build -t cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }} \
                         -t cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}_latest .
 
-        # https://yandex.cloud/ru/docs/cli/operations/install-cli
-        # - name: Install yandex cli
-        #   run: |
-        #     curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-
-        # - name: Check yandex cli
-        #   run: |
-        #     yc --help
-
-        # TODO fix
         # https://yandex.cloud/ru/docs/container-registry/operations/authentication#cred-helper
         - name: Login to Yandex Container Registry
           run: |
@@ -69,13 +58,12 @@
               --password-stdin \
             cr.yandex
 
-        # TODO каежтся везед заменить app на shri-infra-homework-2025
         - name: Push Docker images
           run: |
             docker push cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}
             docker push cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}_latest
 
-        # TODO fix
+        # - создаёт тег, с номером текущей версии, который указывает на последний коммит в главной ветке
         - name: Create Git tag
           run: |
             git tag v${{ env.VERSION }}
@@ -108,13 +96,7 @@
             git commit -m "Update CHANGELOG for v${{ env.VERSION }}"
             git push origin releases/${{ env.VERSION }}
 
-        # - создаёт Issue в GitHub, которое содержит всю важную информацию:
-        #     - дату,
-        #     - автора релиза (тот, кто запустил флоу),
-        #     - номер версии (`${{ github.run_number }}`),
-        #     - список коммитов от предыдущего релизного (или фиксрелизного) тега,
-        #     - ссылку на docker-образом в Yandex Container Registry\
-        #       `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>`
+        # создаёт Issue в GitHub
         - name: Create GitHub Release Issue
           uses: dacbd/create-issue-action@main
           with:
@@ -133,7 +115,7 @@
 
               ### 📂 Link
 
-              docker pull cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}
+              [cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}](https://cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }})
               
             labels: "release"
             token: ${{ secrets.GITHUB_TOKEN }}

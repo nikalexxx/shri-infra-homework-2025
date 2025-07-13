@@ -1,4 +1,4 @@
-name: Deploy to Production
+name: 4. Deploy to Production
 
 on:
   workflow_dispatch:
@@ -7,17 +7,12 @@ on:
         type: string
         description: 'Версия релиза (например: v1.0.0)'
         required: true
-      issue_number:
-        type: integer
-        description: 'Номер Issue, с которым связан релиз'
-        required: false
 
 env:
   YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
   REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
   VERSION: ${{ inputs.release_version}}
   DOCKER_IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
-  ISSUE_NUMBER: ${{ github.event.inputs.issue_number || 1 }}
 
 jobs:
   deploy:

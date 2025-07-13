@@ -1,4 +1,4 @@
-name: Fix Release Pipeline
+name: 3. Fix Release Pipeline
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ env:
   REGISTRY_ID: ${{ secrets.YANDEX_REGISTRY_ID }}
   VERSION: ${{ github.event.inputs.release_version }}
   FIX_NUMBER: ${{ github.run_number }}
-  DOCKER_IMAGE_NAME: cr.yandex/${{ env.REGISTRY_ID }}/app
+  DOCKER_IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
 
 jobs:
   lint-and-test:
@@ -45,13 +45,13 @@ jobs:
         run: |
           echo ${{ secrets.YANDEX_OAUTH_TOKEN }} | docker login cr.yandex -u oauth --password-stdin
 
-# TODO кажется пушит только 1 контенер
+      # пушим контеинеры с тегами version_latest, and fix_version
       - name: Push Docker images
         run: |
           docker push $DOCKER_IMAGE_NAME:${VERSION}_fix${FIX_NUMBER}
           docker push $DOCKER_IMAGE_NAME:${VERSION}_latest
 
-## создаёт тег с номером текущего релиза + пометкой `fix` и номером фикса
+      # создаёт тег с номером текущего релиза + пометкой `fix` и номером фикса
       - name: Create Git tag v${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
         run: |
           git tag v${{ env.VERSION }}_fix${{ env.FIX_NUMBER }}
@@ -89,8 +89,6 @@ jobs:
 
             ### 📂 Link
 
-            ```bash
-            docker pull $DOCKER_IMAGE_NAME:${VERSION}_fix${FIX_NUMBER}
-            ```
+            [cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}](https://cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }})
 
           comment-only: true
