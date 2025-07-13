@@ -58,7 +58,12 @@ jobs:
             - name: Get previous tag and commits
               id: commits
               run: |
-                  COMMITS=$(git log --oneline --pretty=format:"- %h %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD)
+                  PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+                  if [ -z "$PREV_TAG" ]; then
+                    COMMITS=$(git log --oneline --pretty=format:"- %h %s" HEAD)
+                  else
+                    COMMITS=$(git log --oneline --pretty=format:"- %h %s" $PREV_TAG..HEAD)
+                  fi
                   if [ -z "$COMMITS" ]; then
                     COMMITS="(нет новых коммитов)"
                   fi
