@@ -32,3 +32,34 @@ jobs:
             docker stop shri-infra || true
             docker rm shri-infra || true
             docker run -d --name shri-infra -p 3000:3000 cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}
+
+      - name: Extract base release version
+        id: base_version
+        run: |
+          BASE_VERSION=$(echo "${{ github.event.inputs.version }}" | sed 's/_.*//')
+          echo "BASE_VERSION=$BASE_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Find release issue number
+        id: find_issue
+        run: |
+          ISSUE_NUMBER=$(gh issue list --state open --search "Release ${{ steps.base_version.outputs.BASE_VERSION }} in:title" --json number -q '.[0].number')
+          echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add comment to release issue
+        if: ${{ steps.find_issue.outputs.ISSUE_NUMBER != '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ steps.find_issue.outputs.ISSUE_NUMBER }} \
+            --body "Деплой версии ${{ github.event.inputs.version }} в прод  
+            Дата: $(date '+%Y-%m-%d %H:%M:%S')  
+            Автор: ${{ github.actor }}  
+
+            Docker-образ: cr.yandex/crpfnnn98v057d07iqev/app:${{ github.event.inputs.version }}"
+
+      - name: Debug: Issue not found
+        if: ${{ steps.find_issue.outputs.ISSUE_NUMBER == '' }}
+        run: |
+          echo "Релизный Issue для Release ${{ steps.base_version.outputs.BASE_VERSION }} не найден. Комментарий не добавлен."
