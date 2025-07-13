@@ -32,10 +32,45 @@ jobs:
     - name: Run release image
       run: |
         ssh -l yar ${{ secrets.SSH_HOST }} << 'EOF'
-          docker run cr.yandex/crp8ugevmr1vj1p9f3jh/app:${{ github.event.inputs.release-version }}_latest
+          docker stop $(docker ps -q)
+          docker run cr.yandex/crp8ugevmr1vj1p9f3jh/app:${{ github.event.inputs.release-version }}_latest &
+          exit
         EOF
-    # - name: cleanup
-    #   run: |
-    #     ssh -l yar ${{ secrets.SSH_HOST }} << 'EOF'
-    #       docker system prune -af
-    #     EOF
+  add-issue-comment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add comment to release issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const version = process.env.RELEASE_BRANCH.split('/').pop();
+            const actor = context.actor;
+            const date = new Date().toISOString().split("T")[0];
+            const commentBody = `
+              Выпущен релиз для версии **${version}**.
+              **Дата:** ${date}
+              **Автор:** ${actor}
+            `;
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            const issue = issues.find(issue => issue.title === `Релиз ${version}`);
+
+            if (!issue) {
+              core.setFailed(`Не удалось найти issue с заголовком "Релиз ${version}"`);
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: commentBody
+            });
