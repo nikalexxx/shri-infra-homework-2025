@@ -48,13 +48,6 @@ jobs:
                   docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_fix${FIX}
                   docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
 
-            - name: Create and push fix tag
-              run: |
-                  git config user.name "github-actions"
-                  git config user.email "github-actions@github.com"
-                  git tag ${VERSION}_fix${FIX}
-                  git push origin ${VERSION}_fix${FIX}
-
             - name: Get previous tag and commits
               id: commits
               run: |
@@ -67,6 +60,13 @@ jobs:
                     echo "$COMMITS"
                     echo 'ENDCOMMITS'
                   } >> $GITHUB_ENV
+
+            - name: Create and push fix tag
+              run: |
+                  git config user.name "github-actions"
+                  git config user.email "github-actions@github.com"
+                  git tag ${VERSION}_fix${FIX}
+                  git push origin ${VERSION}_fix${FIX}
 
             - name: Find release issue number
               id: issue

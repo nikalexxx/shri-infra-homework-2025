@@ -47,11 +47,6 @@ jobs:
                   docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:$VERSION
                   docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
 
-            - name: Create and push version tag
-              run: |
-                  git tag $VERSION
-                  git push origin $VERSION
-
             - name: Get previous tag and commits
               id: commits
               run: |
@@ -64,6 +59,11 @@ jobs:
                     echo "$COMMITS"
                     echo 'ENDCOMMITS'
                   } >> $GITHUB_ENV
+
+            - name: Create and push version tag
+              run: |
+                  git tag $VERSION
+                  git push origin $VERSION
 
             - name: Create GitHub Issue
               env:
