@@ -10,6 +10,7 @@ on:
 
 env:
   REGISTRY: cr.yandex/crplgh0146jj4ahh90mc
+  REGISTRY_ID: crplgh0146jj4ahh90mc
   IMAGE_NAME: app
 
 jobs:
@@ -17,26 +18,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install Yandex Cloud CLI
-        run: |
-          curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-          echo "${HOME}/yandex-cloud/bin" >> $GITHUB_PATH
-
-      - name: Check image exists
+      - name: Check image exists in Yandex Registry
         env:
-          YC_OAUTH: ${{ secrets.YC_OAUTH_TOKEN }}
+          YC_TOKEN: ${{ secrets.YC_OAUTH_TOKEN }}
+          IMAGE_TAG: ${{ inputs.release }}_latest
         run: |
-          echo "$YC_OAUTH" | yc iam create-token > token.txt
-          TOKEN=$(cat token.txt)
-          IMAGE_TAG=${{ inputs.release }}_latest
+          echo "Checking for image: $IMAGE_NAME:$IMAGE_TAG"
 
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer $TOKEN" \
-            "https://container-registry.api.cloud.yandex.net/container-registry/v1/images?registryId=<registry-id>&name=${IMAGE_NAME}&tag=${IMAGE_TAG}")
+          RESPONSE=$(curl -s -H "Authorization: Bearer $YC_TOKEN" \
+          -X POST \
+          -H "Content-Type: application/json" \
+          -d '{
+              "pageSize": 1,
+              "filter": "name == \"'$IMAGE_NAME'\" AND tags.any(t, t == \"'$IMAGE_TAG'\")",
+              "registryId": "'"$REGISTRY_ID"'"
+          }' \
+          https://container-registry.api.cloud.yandex.net/container-registry/v1/images:search)
 
-          if [ "$STATUS" != "200" ]; then
-            echo "Image $IMAGE_TAG not found in registry"
-            exit 1
+          echo "Registry search response: $RESPONSE"
+
+          FOUND=$(echo "$RESPONSE" | grep "\"tag\": \"$IMAGE_TAG\"" || true)
+
+          if [ -z "$FOUND" ]; then
+          echo "❌ Image '$IMAGE_NAME:$IMAGE_TAG' not found in registry"
+          exit 1
+          else
+          echo "✅ Image found"
           fi
 
       - name: Deploy via SSH
