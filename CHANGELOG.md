@@ -1,3 +1,11 @@
+## 15
+- 971090c Update CHANGELOG for 14 (#16)
+- 6679bb0 edit about name
+- 0dfda58 fix comment message
+- d15d04a add comment
+- 406a55a fix env variables
+- c57999d change github.issues to github.rest.issues
+
 ## 14
 - 3ce5917 Update CHANGELOG for 13 (#14)
 - e941f8a small changes
