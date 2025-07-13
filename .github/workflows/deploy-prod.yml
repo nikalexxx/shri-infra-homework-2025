@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Логинимся в YCR и проверяем, что образ с таким тегом существует
+    
       - name: login & check image
         env:
           IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
@@ -21,7 +21,6 @@ jobs:
           docker login cr.yandex -u iam -p '${{ secrets.YC_OAUTH_TOKEN }}'
           docker manifest inspect "$IMAGE" >/dev/null
 
-      # 2. SSH на ВМ → pull → restart контейнера
       - name: deploy to VM
         uses: appleboy/ssh-action@v1
         with:

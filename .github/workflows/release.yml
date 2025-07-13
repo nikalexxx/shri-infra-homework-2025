@@ -52,7 +52,7 @@ jobs:
       - run: npm run lint
       - run: npm run test
 
-      # ───────── docker login через IAM-токен ─────────
+     
       - run: echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login -u iam --password-stdin cr.yandex
 
       - run: |
@@ -60,7 +60,7 @@ jobs:
           docker push ${IMAGE}:${VERSION}
           docker push ${IMAGE}:${VERSION}_latest
 
-      # ── сделаем тег v<VERSION> ────────────────
+
       - name: create git tag
         if: github.event_name == 'workflow_dispatch'
         run: |
