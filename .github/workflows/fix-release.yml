@@ -120,7 +120,7 @@ jobs:
 
             ### 📂 Link
 
-            [cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }}](https://cr.yandex/${{ env.REGISTRY_ID }}/app:${{ env.VERSION }})
+            [cr.yandex/${process.env.REGISTRY_ID}/app:${process.env.VERSION}](https://cr.yandex/ ${process.env.REGISTRY_ID}/app:${process.env.VERSION})
             `;
 
             github.rest.issues.createComment({
