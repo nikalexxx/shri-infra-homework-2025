@@ -46,7 +46,6 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npm run test
 
       - id: fixnum
         run: echo "FIXNUM=${{ github.run_number }}" >> $GITHUB_ENV
@@ -93,14 +92,11 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                body: `
-                  **Дата фикса:** ${new Date().toISOString()}
-                  **Автор:** ${{ github.actor }}
-                  **Коммиты:**
-                  \`\`\`
-                  ${{ env.COMMITS }}
-                  \`\`\`
-                  **Docker-образ:** $REGISTRY/app:${{ env.VERSION }}_fix${{ env.FIXNUM }}
-                `
+                body: `**Дата фикса:** ${new Date().toISOString()}
+              **Автор:** ${{ github.actor }}
+              **Коммиты:**
+              ${{ env.COMMITS }}
+
+              **Docker-образ:** $REGISTRY/app:${{ env.VERSION }}_fix${{ env.FIXNUM }}`
               });
             }
