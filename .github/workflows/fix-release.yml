@@ -1,0 +1,131 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Base release version"
+        required: true
+
+jobs:
+  # 1. Линт и тесты
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Lint & Test
+        uses: ./.github/actions/lint-and-test
+        with:
+          node-version: "18"
+
+  # 2. Получение номера фикса
+  compute_fix_number:
+    runs-on: ubuntu-latest
+    outputs:
+      fix_number: ${{ steps.set_fix_number.outputs.fix_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute fix tag from input version
+        id: set_fix_number
+        env:
+          BASE_TAG: ${{ github.event.inputs.version }}
+        run: |
+          git fetch --tags
+
+          FIX_TAGS=$(git tag | grep "^${BASE_TAG}_fix" || true)
+
+          if [[ -z "$FIX_TAGS" ]]; then
+            FIX_NUMBER=1
+          else
+            FIX_NUMBER=$(echo "$FIX_TAGS" | sed -E "s/^${BASE_TAG}_fix//" | sort -n | tail -n1)
+            FIX_NUMBER=$((FIX_NUMBER + 1))
+          fi
+          echo "fix_number=$FIX_NUMBER" >> $GITHUB_OUTPUT
+
+  # 3. Сборка и пуш фикса
+  build-and-push-fix:
+    needs:
+      - lint-test
+      - compute_fix_number
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.version }}
+      FIX_NO: ${{ needs.compute_fix_number.outputs.fix_number}}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build & Push Docker
+        uses: ./.github/actions/docker-build-push
+        with:
+          registry-id: ${{ secrets.REESTR_ID }}
+          app-name: app
+          tags: "${{ env.VERSION }}_fix${{ env.FIX_NO }} ${{ env.VERSION }}_latest"
+          ycr-token: ${{ secrets.YCR_TOKEN }}
+
+      - name: Create Git tag for fix
+        run: |
+          git tag ${{ env.VERSION }}_fix${{ env.FIX_NO }}
+          git push origin ${{ env.VERSION }}_fix${{ env.FIX_NO }}
+
+  # 4. Найти релизный Issue
+  find-issue:
+    needs: build-and-push-fix
+    runs-on: ubuntu-latest
+    outputs:
+      issue_number: ${{ steps.find_issue.outputs.issue_number }}
+    steps:
+      - name: Find release issue by title
+        id: find_issue
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        with:
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 20
+            });
+            const match = issues.find(i => i.title === `Release v${process.env.VERSION}`);
+            if (!match) {
+              throw new Error(`Release issue for version ${process.env.VERSION} not found`);
+            }
+            core.setOutput("issue_number", match.number);
+
+  # 5. Прокомментировать Issue фиксом
+  comment-on-issue:
+    needs:
+      - find-issue
+      - compute_fix_number
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.version }}
+      FIX_NO: ${{ needs.compute_fix_number.outputs.fix_number}}
+      REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+      ISSUE_NUMBER: ${{ needs.find-issue.outputs.issue_number }}
+    steps:
+      - name: Add comment to release issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const actor = context.actor;
+            const today = new Date().toISOString().split("T")[0];
+            const body = `
+            **Fix ${process.env.FIX_NO}** by @${actor} on ${today}
+
+            **Docker image:** \`cr.yandex/${process.env.REGISTRY_ID}/app:${process.env.VERSION}_fix${process.env.FIX_NO}\`
+            `;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(process.env.ISSUE_NUMBER),
+              body
+            });

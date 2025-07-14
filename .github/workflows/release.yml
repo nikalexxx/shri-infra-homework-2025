@@ -1,0 +1,162 @@
+name: Create Release
+on:
+  workflow_dispatch:
+
+env:
+  APP_NAME: app
+  REGISTRY_HOST: cr.yandex
+  REGISTRY_ID: ${{ secrets.REESTR_ID }}
+
+jobs:
+  # 1. Проверки
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Lint & Test
+        uses: ./.github/actions/lint-and-test
+        with:
+          node-version: "18"
+
+  # 2. Сборка и пуш Docker
+  build-and-push:
+    name: Build & Push Docker
+    needs: lint-test
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build & Push Docker
+        uses: ./.github/actions/docker-build-push
+        with:
+          registry-id: ${{ secrets.REESTR_ID }}
+          app-name: app
+          tags: "${{ env.VERSION }} ${{ env.VERSION }}_latest"
+          ycr-token: ${{ secrets.YCR_TOKEN }}
+
+  # 3. Создание релизной ветки
+  release-branch:
+    name: Create Release Branch
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create branch releases/<version>
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b releases/${VERSION}
+          git push origin releases/${VERSION}
+
+  # 4. Тег и Changelog
+  tag-and-changelog:
+    name: Tag & Update Changelog
+    needs: release-branch
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: releases/${{ env.VERSION }}
+          fetch-depth: 0
+      - name: Fetch all tags
+        run: git fetch --tags
+      - name: Create Git tag
+        run: |
+          git tag ${VERSION}
+          git push origin ${VERSION}
+      - name: Generate changelog entry
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 ${VERSION}^ || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          COMMITS=$(git log $RANGE --pretty=format:'- %s (%an)' )
+          DATE=$(date -u +"%Y-%m-%d")
+          echo -e "## ${VERSION} (${DATE})\n\n${COMMITS}\n" > new_changelog.md
+      - name: Prepend to CHANGELOG.md
+        run: |
+          cat new_changelog.md CHANGELOG.md > CHANGELOG.tmp
+          mv CHANGELOG.tmp CHANGELOG.md
+      - name: Commit CHANGELOG.md
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore: update CHANGELOG for release ${VERSION}"
+          git push origin releases/${VERSION}
+
+  # 5. Создание Issue
+  create-issue:
+    needs: tag-and-changelog
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare issue body
+        run: |
+          # подтягиваем глобальные переменные
+          APP_NAME="${{ env.APP_NAME }}"
+          REGISTRY_HOST="${{ env.REGISTRY_HOST }}"
+          REGISTRY_ID="${{ env.REGISTRY_ID }}"
+          REG="${REGISTRY_HOST}/${REGISTRY_ID}"
+          DATE=$(date -u +"%Y-%m-%d")
+
+          PREV_TAG=$(git describe --tags --abbrev=0 $VERSION^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            LOG=$(git log $PREV_TAG..HEAD --pretty=format:'- %s (%an)')
+          else
+            LOG=$(git log --pretty=format:'- %s (%an)')
+          fi
+
+          cat <<EOF > .github/release-issue.md
+          **Release**: $VERSION
+          **Date**: $DATE UTC
+          **Author**: @${{ github.actor }}
+
+          **Commits:**
+          $LOG
+
+          **Docker images:**
+          - \`$REG/$APP_NAME:$VERSION\`
+          - \`$REG/$APP_NAME:${VERSION}_latest\`
+          EOF
+
+      - name: Create GitHub Issue (GH API)
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ env.VERSION }}
+        with:
+          script: |
+            const fs = require('fs');
+            const content = fs.readFileSync('.github/release-issue.md', 'utf8');
+
+            const result = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release v${process.env.VERSION}`,
+              body: content
+            });
+
+            core.setOutput("issue_number", result.data.number);
+            fs.writeFileSync('release-issue-number.txt', result.data.number.toString());
+          result-encoding: string
+
+      # Сохраняем release-issue-number в артефакт, чтобы потом использовать в deploy-prod
+      - name: Upload issue number
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-issue-number
+          path: release-issue-number.txt
