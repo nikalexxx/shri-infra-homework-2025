@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+env:
+  DOCKER_REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+  DOCKER_TAG: ${{ github.run_number }}
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          
+      - name: Install and verify
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          
+      - name: Create release branch
+        run: |
+          git checkout -b releases/$DOCKER_TAG
+          git push origin releases/$DOCKER_TAG
+          
+      - name: Build and push Docker image
+        run: |
+          docker build -t $DOCKER_REGISTRY:$DOCKER_TAG .
+          docker tag $DOCKER_REGISTRY:$DOCKER_TAG $DOCKER_REGISTRY:${DOCKER_TAG}_latest
+          echo '${{ secrets.YC_SA_KEY }}' | docker login --username json_key --password-stdin cr.yandex
+          docker push $DOCKER_REGISTRY:$DOCKER_TAG
+          docker push $DOCKER_REGISTRY:${DOCKER_TAG}_latest
+          
+      - name: Tag release
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git tag v$DOCKER_TAG
+          git push origin v$DOCKER_TAG
+          
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 v$DOCKER_TAG^ 2>/dev/null || echo "")
+          COMMITS=$(git log ${PREV_TAG:+$PREV_TAG..HEAD} --pretty=format:"- %h %s (%an)")
+          
+          {
+            echo "# v$DOCKER_TAG ($(date '+%Y-%m-%d'))"
+            echo "## Changes"
+            echo "$COMMITS"
+            echo "## Docker Image"
+            echo "$DOCKER_REGISTRY:$DOCKER_TAG"
+          } > full_changelog.txt
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat full_changelog.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+      - name: Update CHANGELOG.md
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+
+          echo -e "${{ steps.changelog.outputs.changelog }}\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+
+          git add CHANGELOG.md
+          git commit -m "Update CHANGELOG for v$DOCKER_TAG"
+          git push --set-upstream origin releases/$DOCKER_TAG
+          
+      - name: Create release issue
+        if: github.event.repository.has_issues
+        run: |
+          gh issue create \
+            --title "Release v$DOCKER_TAG" \
+            --body "$(printf "### Release Information\n\n**Version:** v%s\n**Date:** %s\n**Author:** %s\n\n**Changes:**\n%s\n\n**Docker Image:**\n%s:%s" "$DOCKER_TAG" "$(date '+%Y-%m-%d %H:%M')" "${{ github.actor }}" "${{ steps.changelog.outputs.CHANGELOG }}" "$DOCKER_REGISTRY" "$DOCKER_TAG")"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

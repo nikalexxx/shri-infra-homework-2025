@@ -1,0 +1,53 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Version to deploy"
+        required: true
+
+env:
+  DOCKER_REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Verify image exists
+        run: |
+          echo '${{ secrets.YC_SA_KEY }}' | docker login --username json_key --password-stdin cr.yandex
+          docker pull $DOCKER_REGISTRY:${{ inputs.release_version }}_latest || {
+            echo "::error::Image not found"
+            exit 1
+          }
+          
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            echo '${{ secrets.YC_SA_KEY }}' | docker login --username json_key --password-stdin cr.yandex
+            docker stop shri-infra || true
+            docker rm shri-infra || true
+            docker run -d \
+              --name shri-infra \
+              -p 3000:3000 \
+              cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ inputs.release_version }}_latest
+              
+      - name: Update deployment status
+        if: github.event.repository.has_issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          gh issue comment $(gh issue list --repo "$GITHUB_REPOSITORY" --search "Release v$RELEASE_VERSION" --json number --jq '.[0].number') \
+            --body "$(printf "### Deployment Status\n\n**Environment:** Production\n**Status:** Success\n**Date:** %s\n**Author:** %s\n\n**Access URL:**\nhttp://%s:%s/hw/store" "$(date '+%Y-%m-%d %H:%M')" "${{ github.actor }}" "${{ secrets.VM_IP }}" "3000")"
