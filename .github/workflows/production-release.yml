@@ -33,7 +33,7 @@ jobs:
       run: |
         ssh -l yar ${{ secrets.SSH_HOST }} << 'EOF'
           docker stop $(docker ps -q)
-          docker run cr.yandex/crp8ugevmr1vj1p9f3jh/app:${{ github.event.inputs.release-version }}_latest &
+          docker run -p 3000:3000 cr.yandex/crp8ugevmr1vj1p9f3jh/app:${{ github.event.inputs.release-version }}_latest &
           exit
         EOF
   add-issue-comment:
