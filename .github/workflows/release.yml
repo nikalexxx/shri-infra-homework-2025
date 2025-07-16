@@ -1,0 +1,99 @@
+name: Release
+
+on:
+    workflow_dispatch:
+
+jobs:
+    check:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                task: [lint, test]
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+            - run: npm ci
+            - run: npm run ${{ matrix.task }}
+
+    release:
+        needs: check
+        runs-on: ubuntu-latest
+        env:
+            VERSION: ${{ github.run_number }}
+
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Create release branch
+              run: |
+                  git config user.name "github-actions"
+                  git config user.email "github-actions@github.com"
+                  git checkout -b releases/$VERSION
+                  git push origin releases/$VERSION
+
+            - name: Login to Yandex Cloud
+              run: |
+                  docker login -u oauth -p ${{ secrets.YC_OAUTH_TOKEN }} cr.yandex
+
+            - name: Build Docker images
+              run: |
+                  docker build -t cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:$VERSION .
+                  docker tag cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:$VERSION cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
+
+            - name: Push Docker images
+              run: |
+                  docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:$VERSION
+                  docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
+
+            - name: Create and push version tag
+              run: |
+                  git tag $VERSION
+                  git push origin $VERSION
+
+            - name: Get previous tag and commits
+              id: commits
+              run: |
+                  COMMITS=$(git log --oneline --pretty=format:"- %h %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD)
+                  if [ -z "$COMMITS" ]; then
+                    COMMITS="(нет новых коммитов)"
+                  fi
+                  {
+                    echo 'COMMITS<<ENDCOMMITS'
+                    echo "$COMMITS"
+                    echo 'ENDCOMMITS'
+                  } >> $GITHUB_ENV
+
+            - name: Create GitHub Issue
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  gh issue create \
+                    --title "Release $VERSION" \
+                    --body "Дата: $(date '+%Y-%m-%d %H:%M:%S')
+                  Автор релиза: ${{ github.actor }}
+                  Номер версии: $VERSION
+
+                  Список коммитов:
+                  ${{ env.COMMITS }}
+
+                  Docker-образ: cr.yandex/${{secrets.YC_CR_REGISTRY_ID}}/app:$VERSION
+                  " \
+                    --label "release" \
+                    --repo ${{ github.repository }}
+
+            - name: Update CHANGELOG.md
+              run: |
+                  DATE="$(date '+%Y-%m-%d %H:%M:%S')"
+                  HEADER="## $VERSION — $DATE"
+                  COMMITS="${{ env.COMMITS }}"
+
+                  echo -e "$HEADER\n$COMMITS\n" | cat - CHANGELOG.md > CHANGELOG.tmp
+                  mv CHANGELOG.tmp CHANGELOG.md
+
+                  git add CHANGELOG.md
+                  git commit -m "update CHANGELOG.md for release $VERSION"
+                  git push origin releases/$VERSION
