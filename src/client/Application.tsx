@@ -25,7 +25,7 @@ export const Application: FC = () => {
     const count = Object.keys(cart).length;
     const cartLabel = count ? `Cart (${count})` : 'Cart';
     const navbarClass = collapsed ? 'collapse navbar-collapse' : 'navbar-collapse';
-
+    console.log("TEST")
     return (
         <div className={bem()}>
             <Helmet titleTemplate='%s — Kogtetochka store' />
@@ -49,7 +49,7 @@ export const Application: FC = () => {
                                 Contacts
                             </NavLink>
                             <NavLink className={({ isActive }) => (isActive ? 'active nav-link' : 'nav-link')} to='/about' onClick={hide}>
-                            About
+                                About
                             </NavLink>
                             <NavLink className={({ isActive }) => (isActive ? 'active nav-link' : 'nav-link')} to='/cart' onClick={hide}>
                                 {cartLabel}

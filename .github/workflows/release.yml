@@ -1,0 +1,93 @@
+name: Release
+
+on: [workflow_dispatch]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      REPOSITORY: cr.yandex/crp6flpsq42sl65e0kb8/app
+      IMAGE_TAG1: ${{ github.run_number }}
+      IMAGE_TAG2: ${{ github.run_number }}_latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Analyze commits
+        run: |
+          TAGGED_COMMIT_LINE=$(git log --oneline --no-merges --decorate | grep -n "tag:" | head -n 1 | cut -d: -f1 || echo 9999)
+
+          COMMITS=$(git log --oneline --no-merges | head -n $((TAGGED_COMMIT_LINE - 1)))
+
+          # Set the environment variable (handle multiline content properly)
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Login to Yandex Cloud Container Registry
+        run: |
+          echo ${{ secrets.yandex_oauth }} | docker login \
+            --username oauth \
+            --password-stdin \
+            cr.yandex
+
+
+      - name: Build, tag, and push image to Yandex Cloud Container Registry
+        run: |
+          docker build -t ${{ env.REPOSITORY }}:${{ env.IMAGE_TAG1 }} -t ${{ env.REPOSITORY }}:${{ env.IMAGE_TAG2 }} .
+          docker push ${{ env.REPOSITORY }} --all-tags
+
+      - name: Create issue
+        uses: JasonEtco/create-an-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NUMBER: ${{ github.run_number }}
+          AUTHOR: ${{ github.actor }}
+          DOCKER_IMAGE: ${{ env.REPOSITORY }}:${{ env.IMAGE_TAG1 }}
+
+
+      - name: Update changelog
+        run: |
+          echo "## ${{ github.run_number }}" > temp
+          echo "${{ env.COMMITS }}" | sed 's/^/- /' >> temp
+
+          cat CHANGELOG.md >> temp
+          mv temp CHANGELOG.md
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add CHANGELOG.md
+          git commit -m "Update changelog"
+          git push --force
+
+
+      - name: Create branch
+        uses: peterjgrainger/action-create-branch@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          branch: 'refs/heads/releases/${{ github.run_number }}'
+
+      - name: Create tag
+        run: |
+          git tag ${{ env.IMAGE_TAG1 }}
+          git push origin ${{ env.IMAGE_TAG1 }} --force

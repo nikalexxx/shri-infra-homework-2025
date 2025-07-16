@@ -4,7 +4,7 @@ import { join } from 'path';
 import { CheckoutResponse } from '../common/types';
 import { ExampleStore } from './data';
 
-const indexHtmlContent = readFileSync(join(__dirname, '..', '..', "dist", "index.html")).toString();
+const indexHtmlContent = readFileSync(join(__dirname, '..', '..', '..', "dist", "index.html")).toString();
 
 const indexHtml = (req: express.Request, res: express.Response) => {
     res.send(indexHtmlContent);

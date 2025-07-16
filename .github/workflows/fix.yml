@@ -1,0 +1,91 @@
+name: Fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_number:
+        description: "Release which is being fixed"
+        required: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    env:
+      REPOSITORY: cr.yandex/crp6flpsq42sl65e0kb8/app
+      IMAGE_TAG1: ${{ inputs.release_number }}_fix${{ github.run_number }}
+      IMAGE_TAG2: ${{ inputs.release_number }}_latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: releases/${{ inputs.release_number }}
+          fetch-depth: 0
+
+
+      - name: Analyze commits
+        run: |
+          TAGGED_COMMIT_LINE=$(git log --oneline --no-merges --decorate | grep -n "tag:" | head -n 1 | cut -d: -f1 || echo 9999)
+
+          COMMITS=$(git log --oneline --no-merges | head -n $((TAGGED_COMMIT_LINE - 1)))
+
+          # Set the environment variable (handle multiline content properly)
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Login to Yandex Cloud Container Registry
+        run: |
+          echo ${{ secrets.yandex_oauth }} | docker login \
+            --username oauth \
+            --password-stdin \
+            cr.yandex
+
+
+      - name: Build, tag, and push image to Yandex Cloud Container Registry
+        run: |
+          docker build -t ${{ env.REPOSITORY }}:${{ env.IMAGE_TAG1 }} -t ${{ env.REPOSITORY }}:${{ env.IMAGE_TAG2 }} .
+          docker push ${{ env.REPOSITORY }} --all-tags
+
+
+      - name: Find issue
+        id: find-issue
+        run: echo "number=$(gh issue list --search "Release ${{ inputs.release_number }}" --json number --jq '.[0].number')" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%d %b %Y')" >> $GITHUB_OUTPUT
+
+      - name: Comment on issue
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ steps.find-issue.outputs.number }}
+          body: |
+            **Fix ${{ github.run_number }}**
+            Date: ${{ steps.date.outputs.date }}
+            Author: ${{ github.actor }}
+            Docker image: ${{ env.REPOSITORY }}:${{ env.IMAGE_TAG1 }}
+            Commits:
+            ${{ env.COMMITS }}
+
+      - name: Create tag
+        run: |
+          git tag ${{ env.IMAGE_TAG1 }}
+          git push origin ${{ env.IMAGE_TAG1 }}

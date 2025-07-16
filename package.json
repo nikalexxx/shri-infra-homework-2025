@@ -2,11 +2,16 @@
   "name": "infra-hw",
   "version": "1.0.0",
   "scripts": {
-    "start": "nodemon ./src/server/index.ts",
+    "dev": "nodemon ./src/server/index.ts",
+    "start": "node --max-old-space-size=1536 ./dist/server/server/index.js",
     "build": "webpack --mode=production --node-env=production",
+    "build:server": "tsc --project tsconfig.server.json",
+    "build:all": "npm run build && npm run build:server",
     "watch": "webpack --watch",
     "test": "jest",
-    "lint": "eslint ./src"
+    "lint": "eslint ./src",
+    "build:docker": "docker build -t stupid-app .",
+    "start:docker": "docker run -d -p 3000:3000 stupid-app"
   },
   "dependencies": {
     "@bem-react/classname": "^1.6.0",

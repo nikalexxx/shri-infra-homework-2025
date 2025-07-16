@@ -1,0 +1,54 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_number:
+        description: "Release to deploy"
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      REPOSITORY: cr.yandex/crp6flpsq42sl65e0kb8/app
+      IMAGE_TAG: ${{ inputs.release_number }}_latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            echo ${{ secrets.yandex_oauth }} | docker login \
+              --username oauth \
+              --password-stdin \
+              cr.yandex
+            docker pull ${{ env.REPOSITORY }}:${{ env.IMAGE_TAG }}
+            docker stop app || true
+            docker rm app || true
+            docker run -d --name app -p 3000:3000 --memory="1.5g" --memory-swap="1.5g" ${{ env.REPOSITORY }}:${{ env.IMAGE_TAG }}
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Find issue
+        id: find-issue
+        run: echo "number=$(gh issue list --search "Release ${{ inputs.release_number }}" --json number --jq '.[0].number')" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%d %b %Y')" >> $GITHUB_OUTPUT
+
+      - name: Comment on issue
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ steps.find-issue.outputs.number }}
+          body: |
+            **Deployed to production**
+            Date: ${{ steps.date.outputs.date }}
+            Author: ${{ github.actor }}
