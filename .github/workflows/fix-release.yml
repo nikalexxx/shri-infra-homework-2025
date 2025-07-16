@@ -1,0 +1,117 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Base release version (e.g. 42)'
+        required: true
+
+env:
+  DOCKER_REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+  FIX_TAG: ${{ github.run_number }}
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: releases/${{ github.event.inputs.release_version }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: |
+          npm ci
+          npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: releases/${{ github.event.inputs.release_version }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: |
+          npm ci
+          npm test
+
+  fix:
+    needs: [typecheck, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: releases/${{ github.event.inputs.release_version }}
+          fetch-depth: 0
+
+      - name: Build and push fix Docker images
+        id: build
+        env:
+          YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+        run: |
+          BASE=${{ github.event.inputs.release_version }}
+          FIX=${{ env.FIX_TAG }}
+          IMAGE_FIX=$DOCKER_REGISTRY:${BASE}_fix${FIX}
+          IMAGE_LATEST=$DOCKER_REGISTRY:${BASE}_latest
+
+          echo "$YC_SA_KEY" | docker login --username json_key --password-stdin cr.yandex
+          docker build -t $IMAGE_FIX .
+          docker tag $IMAGE_FIX $IMAGE_LATEST
+          docker push $IMAGE_FIX
+          docker push $IMAGE_LATEST
+
+          echo "image_fix=$IMAGE_FIX" >> $GITHUB_OUTPUT
+
+      - name: Tag the fix release
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git tag v${{ github.event.inputs.release_version }}_fix${{ env.FIX_TAG }}
+          git push origin v${{ github.event.inputs.release_version }}_fix${{ env.FIX_TAG }}
+
+      - name: Generate fix changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          COMMITS=$(git log ${PREV_TAG:+$PREV_TAG..HEAD} --pretty=format:"- %h %s (%an)")
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Comment on release issue
+        if: github.event.repository.has_issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASE=${{ github.event.inputs.release_version }}
+          FIX=${{ env.FIX_TAG }}
+          IMAGE=${{ steps.build.outputs.image_fix }}
+          COMMITS="${{ steps.changelog.outputs.commits }}"
+          DATE=$(date '+%Y-%m-%d %H:%M')
+          AUTHOR=${{ github.actor }}
+
+          ISSUE_NUMBER=$(gh issue list --search "Release v$BASE" --json number -q '.[0].number')
+          if [ -n "$ISSUE_NUMBER" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body "$(cat <<EOF
+            # 🛠 Fix for Release v$BASE
+
+            **Date:** $DATE  
+            **Author:** @$AUTHOR  
+            **Docker Image:** \`$IMAGE\`
+
+            ---
+
+            ## 🔧 Commits since last tag:
+            $COMMITS
+            EOF
+            )"
+          else
+            echo "⚠️ Issue not found for release v$BASE"
+          fi

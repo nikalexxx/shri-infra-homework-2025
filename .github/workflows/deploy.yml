@@ -1,0 +1,76 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Версия для деплоя'
+        required: true
+
+env:
+  DOCKER_REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app
+
+jobs:
+  deploy:
+    name: Deploy Job
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Docker login & verify image exists
+        env:
+          YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+        run: |
+          echo "$YC_SA_KEY" | docker login --username json_key --password-stdin cr.yandex
+          IMAGE=${{ env.DOCKER_REGISTRY }}:${{ github.event.inputs.release_version }}_latest
+          if ! docker manifest inspect $IMAGE > /dev/null; then
+            echo "::error::Docker image $IMAGE not found in registry"
+            exit 1
+          fi
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY}}
+          script: |
+            echo '${{ secrets.YC_SA_KEY }}' | docker login --username json_key --password-stdin cr.yandex
+
+            REGISTRY="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app"
+            TAG="${{ github.event.inputs.release_version }}_latest"
+            IMAGE="$REGISTRY:$TAG"
+
+            docker stop app || true
+            docker rm app || true
+            docker pull $IMAGE
+            docker run -d --restart unless-stopped --name app -p 80:3000 $IMAGE
+
+            if ! docker ps --filter "name=app" --filter "status=running" | grep app > /dev/null; then
+              echo "Failed to start container"
+              exit 1
+            fi
+
+      - name: Add deployment comment to release issue
+        if: github.event.repository.has_issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.inputs.release_version }}
+        run: |
+          ISSUE_NUMBER=$(gh issue list --search "Release v$VERSION" --json number -q '.[0].number')
+          if [ -n "$ISSUE_NUMBER" ]; then
+            gh issue comment "$ISSUE_NUMBER" \
+              --body "$(cat <<EOF
+              # 🎉 Production Deployed
+
+              **Version:** v$VERSION  
+              **Deployer:** @${{ github.actor }}  
+              **Date:** $(date -u +'%Y-%m-%d %H:%M UTC')  
+              **Image:** \`cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${VERSION}_latest\`
+              EOF
+            )"
+          else
+            echo "Issue not found, skipping comment"
+          fi
