@@ -15,7 +15,7 @@ const basename = '/hw/store';
 const api = new ExampleApi(basename);
 const cart = new CartApi();
 const store = initStore(api, cart);
-
+console.log('TESTSSSS')
 const application = (
     <BrowserRouter basename={basename}>
         <Provider store={store}>
