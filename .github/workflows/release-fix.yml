@@ -1,0 +1,118 @@
+name: Release Fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to fix'
+        required: true
+        type: string
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout release branch
+        run: |
+          git fetch origin
+          git checkout releases/${{ github.event.inputs.release_version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run type check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Login to Yandex Cloud Container Registry
+        uses: yc-actions/yc-cr-login@v1
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: |
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_latest
+
+      - name: Create fix tag
+        run: |
+          git tag v${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+          git push origin v${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+
+      - name: Get previous release tag
+        id: get-previous-tag
+        run: |
+          PREVIOUS_TAG=$(git tag --sort=-creatordate | grep -E '^v${{ github.event.inputs.release_version }}(_fix[0-9]+)?$' | head -n 1 || echo "v${{ github.event.inputs.release_version }}")
+          echo "PREVIOUS_TAG=${PREVIOUS_TAG}" >> $GITHUB_ENV
+
+      - name: Get commits since previous release
+        id: get-commits
+        run: |
+          COMMITS=$(git log ${{ env.PREVIOUS_TAG }}..HEAD --pretty=format:"- %s (%h)")
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Find release issue
+        id: find-issue
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+            });
+            
+            const releaseIssue = issues.find(issue => issue.title === `Release v${{ github.event.inputs.release_version }}`);
+            if (releaseIssue) {
+              return releaseIssue.number;
+            }
+            return null;
+          result-encoding: string
+
+      - name: Add comment to release issue
+        if: steps.find-issue.outputs.result != 'null'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issueNumber = ${{ steps.find-issue.outputs.result }};
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `## Fix v${{ github.event.inputs.release_version }}_fix${{ github.run_number }}
+
+            **Date:** ${new Date().toISOString().split('T')[0]}
+            **Author:** @${{ github.actor }}
+
+            ### Commits:
+            ${{ env.COMMITS }}
+
+            ### Docker image:
+            \`cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.event.inputs.release_version }}_fix${{ github.run_number }}\`
+            `
+            }); 

@@ -1,0 +1,115 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm i
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Create release branch
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git checkout -b releases/${{ github.run_number }}
+          git push -u origin releases/${{ github.run_number }}
+
+      - name: Login to Yandex Cloud Container Registry
+        uses: yc-actions/yc-cr-login@v1
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: |
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.run_number }}
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.run_number }}_latest
+
+      - name: Create tag
+        run: |
+          git tag v${{ github.run_number }}
+          git push origin v${{ github.run_number }}
+
+      - name: Get previous release tag
+        id: get-previous-tag
+        run: |
+          PREVIOUS_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+(_fix[0-9]+)?$' | head -n 1 || echo "")
+          echo "PREVIOUS_TAG=${PREVIOUS_TAG}" >> $GITHUB_ENV
+
+      - name: Get commits since previous release
+        id: get-commits
+        run: |
+          if [ -z "${{ env.PREVIOUS_TAG }}" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" -n 10)
+          else
+            COMMITS=$(git log ${{ env.PREVIOUS_TAG }}..HEAD --pretty=format:"- %s (%h)")
+          fi
+          echo "COMMITS<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create GitHub issue
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: issue } = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release v${{ github.run_number }}`,
+              body: `## Release v${{ github.run_number }}
+
+            **Date:** ${new Date().toISOString().split('T')[0]}
+            **Author:** @${{ github.actor }}
+            **Version:** ${{ github.run_number }}
+
+            ### Commits:
+            ${{ env.COMMITS }}
+
+            ### Docker image:
+            \`cr.yandex/${{ secrets.YC_REGISTRY_ID }}/app:${{ github.run_number }}\`
+            `
+            });
+
+      - name: Update CHANGELOG.md
+        run: |
+          {
+            echo "# v${{ github.run_number }} ($(date +%Y-%m-%d))"
+            echo ""
+            echo "${{ env.COMMITS }}"
+            echo ""
+            cat CHANGELOG.md
+          } > CHANGELOG.md.new
+          mv CHANGELOG.md.new CHANGELOG.md
+
+      - name: Commit and push CHANGELOG update
+        run: |
+          git add CHANGELOG.md
+          git commit -m "Update CHANGELOG for v${{ github.run_number }}"
+          git push origin releases/${{ github.run_number }} 
