@@ -1,0 +1,112 @@
+name: Release
+
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: cr.yandex/crplgh0146jj4ahh90mc
+  IMAGE_NAME: app
+  VERSION: ${{ github.run_number }}
+
+jobs:
+  run-ci:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: run-ci
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create release branch
+        run: |
+          git checkout -b releases/${{ env.VERSION }}
+          git push origin releases/${{ env.VERSION }}
+
+      - name: Get previous tag
+        id: prev
+        run: |
+          TAG=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | head -n 1)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Get commit log
+        id: commits
+        run: |
+          git fetch --tags
+          LOG=$(git log ${{ steps.prev.outputs.tag }}..HEAD --pretty=format:"- %s (%an)" || echo "no previous tag")
+          echo "log<<EOF" >> $GITHUB_OUTPUT
+          echo "$LOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        env:
+          YC_OAUTH: ${{ secrets.YC_OAUTH_TOKEN }}
+        run: |
+          echo "$YC_OAUTH" | docker login --username oauth --password-stdin cr.yandex
+          docker build -t $REGISTRY/$IMAGE_NAME:$VERSION -t $REGISTRY/$IMAGE_NAME:${VERSION}_latest .
+          docker push $REGISTRY/$IMAGE_NAME:$VERSION
+          docker push $REGISTRY/$IMAGE_NAME:${VERSION}_latest
+
+      - name: Create Git tag
+        run: |
+          git tag $VERSION
+          git push origin $VERSION
+
+      - name: Get current date
+        id: date
+        run: echo "value=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Issue
+        uses: dacbd/create-issue-action@main
+        with:
+          token: ${{ github.token }}
+          title: "Релиз ${{ env.VERSION }}"
+          body: |
+            ## Релиз ${{ env.VERSION }}
+
+            - Дата: ${{ steps.date.outputs.value }}
+            - Автор: @${{ github.actor }}
+
+            ### Список изменений:
+            ${{ steps.commits.outputs.log }}
+
+            ### Docker-образы:
+            - ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+            - ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}_latest
+          labels: release
+
+      - name: Calculate previous version
+        id: prev_version
+        run: echo "value=$((VERSION - 1))" >> $GITHUB_OUTPUT
+        env:
+          VERSION: ${{ env.VERSION }}
+
+      - name: Fetch previous changelog
+        run: |
+          git fetch origin releases/${{ steps.prev_version.outputs.value }}
+          git checkout origin/releases/${{ steps.prev_version.outputs.value }} -- CHANGELOG.md
+
+      - name: Update CHANGELOG.md
+        run: |
+          echo "## $VERSION - ${{ steps.date.outputs.value }}" > .changelog.tmp
+          echo "${{ steps.commits.outputs.log }}" >> .changelog.tmp
+          echo "" >> .changelog.tmp
+          cat CHANGELOG.md >> .changelog.tmp
+          mv .changelog.tmp CHANGELOG.md
+
+      - name: Commit CHANGELOG
+        run: |
+          git add CHANGELOG.md
+          git commit -m "update changelog for v$VERSION"
+          git push origin HEAD:releases/${{ env.VERSION }}

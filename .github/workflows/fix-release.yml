@@ -1,0 +1,115 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Target release version (e.g. 3)"
+        required: true
+        type: string
+
+env:
+  REGISTRY: cr.yandex/crplgh0146jj4ahh90mc
+  IMAGE_NAME: app
+
+jobs:
+  run-ci:
+    uses: ./.github/workflows/ci.yml
+
+  fix-release:
+    needs: run-ci
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: releases/${{ inputs.release }}
+          fetch-depth: 0
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get fix version (run number)
+        id: fix
+        run: echo "value=${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      - name: Get previous tag
+        id: prev
+        run: |
+          git fetch --tags
+          TAG=$(git tag --sort=-creatordate | grep -E '^${{ inputs.release }}(-fix[0-9]+)?$' | tail -n 1)
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Get commit log
+        id: commits
+        run: |
+          git fetch --tags
+          LOG=$(git log ${{ steps.prev.outputs.tag }}..HEAD --pretty=format:"- %s (%an)" || echo "no previous tag")
+          echo "log<<EOF" >> $GITHUB_OUTPUT
+          echo "$LOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Login to Yandex Container Registry
+        env:
+          YC_OAUTH: ${{ secrets.YC_OAUTH_TOKEN }}
+        run: echo "$YC_OAUTH" | docker login --username oauth --password-stdin cr.yandex
+
+      - name: Build and push Docker image
+        env:
+          VERSION: ${{ inputs.release }}
+          FIX: ${{ steps.fix.outputs.value }}
+        run: |
+          docker build -t $REGISTRY/$IMAGE_NAME:$VERSION\_fix$FIX -t $REGISTRY/$IMAGE_NAME:$VERSION\_latest .
+          docker push $REGISTRY/$IMAGE_NAME:$VERSION\_fix$FIX
+          docker push $REGISTRY/$IMAGE_NAME:$VERSION\_latest
+
+      - name: Create git tag
+        env:
+          VERSION: ${{ inputs.release }}
+          FIX: ${{ steps.fix.outputs.value }}
+        run: |
+          git tag $VERSION-fix$FIX
+          git push origin $VERSION-fix$FIX
+
+      - name: Find issue by title
+        id: find_issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = "${{ inputs.release }}";
+            const { data: issues } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "open"
+            });
+
+            const issue = issues.find(i => i.title.trim() === `Релиз ${version}`);
+            if (!issue) {
+                throw new Error(`No issue found for release ${version}`);
+            }
+
+            core.setOutput("number", issue.number);
+
+      - name: Get current date
+        id: date
+        run: echo "value=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Add fix comment to issue
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ steps.find_issue.outputs.number }}
+          body: |
+            **Фикс релиза `${{ inputs.release }}`**
+
+            - Дата: ${{ steps.date.outputs.value }}
+            - Автор: @${{ github.actor }}
+            - Тег: `${{ inputs.release }}-fix${{ steps.fix.outputs.value }}`
+
+            ### Список изменений:
+            ${{ steps.commits.outputs.log }}
+
+            ### Docker-образы:
+            `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release }}_fix${{ steps.fix.outputs.value }}`

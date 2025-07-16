@@ -1,0 +1,80 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Release version (e.g. 3)"
+        required: true
+        type: string
+
+env:
+  REGISTRY: cr.yandex/crplgh0146jj4ahh90mc
+  IMAGE_NAME: app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Docker login to Yandex Registry
+        run: echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+
+      - name: Check if Docker image exists using Docker CLI
+        run: |
+          echo "Checking for image: $REGISTRY/$IMAGE_NAME:${{ inputs.release }}_latest"
+          if docker manifest inspect $REGISTRY/$IMAGE_NAME:${{ inputs.release }}_latest > /dev/null; then
+            echo "Image exists"
+          else
+            echo "Image does not exist in registry"
+            exit 1
+          fi
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script_stop: true
+          script: |
+            echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login --username oauth --password-stdin cr.yandex
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release }}_latest
+            docker stop app || true
+            docker rm app || true
+            docker run -d --name app -p 80:3000 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release }}_latest
+
+      - name: Find issue for release
+        id: find_issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = "${{ inputs.release }}";
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open"
+            });
+
+            const issue = issues.find(i => i.title.trim() === `Релиз ${version}`);
+            if (!issue) {
+              throw new Error(`No issue found for release ${version}`);
+            }
+
+            core.setOutput("number", issue.number);
+
+      - name: Get current date
+        id: date
+        run: echo "value=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Add comment to release issue
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ steps.find_issue.outputs.number }}
+          body: |
+            Релиз развернут
+
+            - Дата: ${{ steps.date.outputs.value }}
+            - Запустил: @${{ github.actor }}
+            - Образ: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.release }}_latest`
