@@ -1,0 +1,51 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/crp3t2fhnchubv3bvf81
+      VERSION: ${{ github.event.inputs.version }}
+      VM_IP: 158.160.138.254
+      VM_USER: aanasteisha
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.VM_IP }}
+          username: ${{ env.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            docker login -u oauth -p ${{ secrets.YC_CR_TOKEN }} cr.yandex
+            docker pull ${{ env.REGISTRY }}/app:${{ env.VERSION }}_latest
+            docker stop shri-infra || true
+            docker rm shri-infra || true
+            docker run -d --name shri-infra -p 3000:3000 ${{ env.REGISTRY }}/app:${{ env.VERSION }}_latest
+
+      - name: Comment on Release Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+            const issue = issues.data.find(i => i.title.includes('${{ github.event.inputs.version }}'));
+            if (issue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `**Релиз выкачен в прод**
+              **Дата:** ${new Date().toISOString()}
+              **Автор:** ${{ github.actor }}`
+              });
+            }
