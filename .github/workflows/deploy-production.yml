@@ -1,0 +1,61 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version to fix'
+        required: true
+        type: string
+      issue_number:
+        description: 'Issue number'
+        required: true
+        type: number
+
+jobs:
+  deploy:
+    name: Deploy Release ${{ inputs.release_version }} to Production
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
+      RELEASE_VERSION: ${{ inputs.release_version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Yandex Cloud Container Registry
+        run: |
+          echo "${{ secrets.YANDEX_PASSWORD }}" | docker login \
+            --username oauth \
+            --password-stdin \
+            cr.yandex
+
+      - name: Deploy on production server over SSH
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: "IMAGE_NAME,RELEASE_VERSION"
+          script: |
+            docker stop app || true
+            docker rm app || true
+            docker pull $IMAGE_NAME:${RELEASE_VERSION}_latest
+            docker run -d --name app -p 3000:3000 $IMAGE_NAME:${RELEASE_VERSION}_latest
+
+      - name: Add comment to release issue
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ inputs.issue_number }}
+          body: |
+            **Release Deployed to Production**
+
+            Date: ${{ github.event.date || github.event.head_commit.timestamp }}
+            Deployed by: @${{ github.actor }}
+            Image: `${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}_latest`
+            Host: `${{ secrets.SSH_HOST }}`

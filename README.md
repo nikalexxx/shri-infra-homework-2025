@@ -1,5 +1,15 @@
 # Домашнее задание ШРИ: Инфраструктура
 
+## IP-адрес сервера
+
+```
+84.201.165.44
+```
+
+Можно открыть в браузере.
+
+http://84.201.165.44:3000/hw/store/
+
 ## Задача
 
 Вам необходимо форкнуть этот репозиторий и добавить:
@@ -54,7 +64,7 @@ https://yandex.cloud/ru/docs/compute/quickstart/quick-create-linux#create-vm
 
     - отводит от `main` релизуню ветку `releases/<версия_релиза>`
 
-    - [собирает docker-образ](https://yandex.cloud/ru/docs/container-registry/operations/docker-image/docker-image-create) с двумя тегами тегами:
+    - [собирает docker-образ](https://yandex.cloud/ru/docs/container-registry/operations/docker-image/docker-image-create) с двумя тегами:
         - `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>`
         - `cr.yandex/<идентификатор_реестра>/app:<версия_релиза>_latest`
     
@@ -129,4 +139,4 @@ npm run build
 npm start
 ```
 
-После этого можете открыть приложение в браузере по адресу http://localhost:3000/hw/store
+После этого можно открыть приложение в браузере по адресу http://localhost:3000/hw/store
