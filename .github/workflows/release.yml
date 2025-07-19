@@ -1,0 +1,219 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: cr.yandex/${{ secrets.YANDEX_REGISTRY_ID }}/app
+
+jobs:
+  lint-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    needs: lint-test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version and branch
+        id: vars
+        run: |
+          VERSION=${{ github.run_number }}
+          BRANCH="releases/$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Make release branch
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git checkout -b ${{ steps.vars.outputs.branch }}
+          git push origin ${{ steps.vars.outputs.branch }}
+
+  create-docker-image:
+    name: Create Docker image
+    runs-on: ubuntu-latest
+
+    needs: create-release
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Auth to registry
+        run: echo "${{ secrets.YANDEX_PASSWORD }}" | docker login -u "${{ secrets.YANDEX_USERNAME }}" --password-stdin cr.yandex
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.REGISTRY }}:${{ github.run_number }} .
+          docker tag ${{ env.REGISTRY }}:${{ github.run_number }} ${{ env.REGISTRY }}:${{ github.run_number }}_latest
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.REGISTRY }}:${{ github.run_number }}
+          docker push ${{ env.REGISTRY }}:${{ github.run_number }}_latest
+
+  create-git-tag:
+    name: Create Git tag
+    runs-on: ubuntu-latest
+
+    needs: create-docker-image
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.vars.branch }}
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag v${{ github.run_number }}
+          git push origin v${{ github.run_number }}
+
+  generate-issue:
+    name: Generate Issue
+    runs-on: ubuntu-latest
+
+    needs: create-git-tag
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub Issue with release info
+        run: |
+          set -eux
+          git fetch --tags --force
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+$" | head -n2 | tail -n1)
+          echo "Previous tag: $PREV_TAG"
+          
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log "$PREV_TAG"..v${{ github.run_number }} --pretty=format:"- %s")
+          else
+            COMMITS=$(git log --pretty=format:"- %s")
+          fi
+          
+          echo "Commits since $PREV_TAG:"
+          echo "$COMMITS"
+          
+          BODY=$(cat <<EOF
+          ## Релиз v${{ github.run_number }}
+  
+          **Дата**: $(date +'%Y-%m-%d')
+          **Автор**: @${{ github.actor }}
+  
+          **Коммиты:**
+          $COMMITS
+  
+          **Образы:**
+          - ${{ env.REGISTRY }}:${{ github.run_number }}
+          - ${{ env.REGISTRY }}:${{ github.run_number }}_latest
+          EOF
+          )
+          
+          echo "$BODY" > body.md
+          gh issue create --title "Релиз v${{ github.run_number }}" --body-file body.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  generate-changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+
+    needs: generate-issue
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.vars.branch }}
+
+      - name: Generate changelog
+        run: |
+          set -eux
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git fetch --tags
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E "^v[0-9]+$" | head -n2 | tail -n1)
+          echo "Previous tag: $PREV_TAG"
+
+          echo -e "## v${{ github.run_number }} - $(date +'%Y-%m-%d')\n" > temp_changelog.md
+
+          if [ -n "$PREV_TAG" ]; then
+            git log "$PREV_TAG"..v${{ github.run_number }} --pretty=format:"- %s" >> temp_changelog.md
+          else
+            git log v${{ github.run_number }} --pretty=format:"- %s" >> temp_changelog.md
+          fi
+
+          echo -e "\n\n" >> temp_changelog.md
+          if [ -f CHANGELOG.md ]; then
+            cat CHANGELOG.md >> temp_changelog.md
+          fi
+          mv temp_changelog.md CHANGELOG.md
+
+      - name: Commit updated changelog to temp branch
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          
+          git checkout -b changelog/update-v${{ github.run_number }}
+          git add CHANGELOG.md
+          git commit -m "chore: update CHANGELOG for v${{ github.run_number }}"
+          git push origin changelog/update-v${{ github.run_number }}
+
+      - name: Make Pull Request
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const changelog_version = `${{ github.run_number }}`;
+            const branch_name = `changelog/update-v${changelog_version}`;
+            const base = 'main';
+            const title = `chore: update CHANGELOG for v${changelog_version}`;
+            const body = `Автоматическое обновление CHANGELOG.md для релиза v${changelog_version}`;
+
+            await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              head: branch_name,
+              base
+            });
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
