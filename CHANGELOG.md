@@ -1,3 +1,11 @@
+## 9
+
+- Merge pull request #32 from mikhaylov-ya/mikhaylov-ya-patch-1 (Yaroslav Mikhaylov)
+- Update README.md (Yaroslav Mikhaylov)
+- Merge pull request #31 from mikhaylov-ya/fix-ip (Yaroslav Mikhaylov)
+- Merge branch 'main' into fix-ip (Yaroslav Mikhaylov)
+- fix: production release (Yaroslav Mikhaylov)
+
 ## 5
 
 - fix release login (Yaroslav Mikhaylov)
