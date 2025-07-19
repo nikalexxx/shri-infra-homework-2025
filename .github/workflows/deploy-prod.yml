@@ -1,0 +1,24 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: "Release version"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and deploy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: rahofski
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            sudo docker login cr.yandex --username oauth --password ${{ secrets.YA_OAUTH_TOKEN }}
+            sudo docker stop app || true && sudo docker rm app || true
+            sudo docker pull cr.yandex/${{ secrets.YA_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+            sudo docker run -d -p 80:3000 --name app cr.yandex/${{ secrets.YA_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest

@@ -1,0 +1,67 @@
+name: Fix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: "Release version to patch"
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: cr.yandex/${{ secrets.YA_REGISTRY_ID }}/app
+      VERSION: ${{ github.event.inputs.version }}
+      FIX_NUMBER: ${{ github.run_number }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+
+      - run: npm ci
+
+      - name: Run linter and tests
+        run: |
+          npm run lint
+          npm run test
+          npm run build
+
+      - name: Build and push Docker image
+        run: |
+          FIX_TAG=${VERSION}_fix${FIX_NUMBER}
+          docker build -t $REGISTRY:$FIX_TAG -t $REGISTRY:${VERSION}_latest .
+          echo ${{ secrets.YA_OAUTH_TOKEN }} | docker login --username oauth --password-stdin cr.yandex
+          docker push $REGISTRY:$FIX_TAG
+          docker push $REGISTRY:${VERSION}_latest
+
+      - name: Tag the release fix in Git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git tag v${VERSION}-fix${FIX_NUMBER}
+          git push origin v${VERSION}-fix${FIX_NUMBER}
+
+      - name: Find Issue number and comment
+        run: |
+          ISSUE_NUMBER=$(gh issue list --state open --json number,title \
+            --jq ".[] | select(.title | test(\"Release v$VERSION\")) | .number" | head -n1)
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "❌ Issue not found for version v$VERSION"
+            exit 1
+          fi
+
+          gh issue comment "$ISSUE_NUMBER" --body "
+          ### 🔧 Fix Release v$VERSION-fix$FIX_NUMBER 
+          **Дата:** $(date -u)
+          **Автор:** @${{ github.actor }}
+          **Docker-образ:** \`$REGISTRY:${VERSION}_fix${FIX_NUMBER}\`
+
+          **Коммиты:**
+          $(git log --pretty=format:'- %s (%an)' v${VERSION}..HEAD)
+          "

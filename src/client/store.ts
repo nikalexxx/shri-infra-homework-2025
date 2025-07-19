@@ -20,7 +20,7 @@ export interface EpicDeps {
 export type ExampleEpic = (action$: Observable<Action>, store$: StateObservable<ApplicationState>, deps: EpicDeps) => Observable<Action>;
 
 const DEFAULT_STATE: ApplicationState = { details: {}, cart: {} };
-
+//
 // actions
 export const productsLoad = () => ({ type: 'PRODUCTS_LOAD' } as const);
 export const productsLoaded = (products: ProductShortInfo[]) => ({ type: 'PRODUCTS_LOADED', products } as const);
