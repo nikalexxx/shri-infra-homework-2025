@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        job: [lint, test]
+    name: run ${{ matrix.job }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - run: npm ci
+
+      - name: run ${{ matrix.job }}
+        run: npm run ${{ matrix.job }}
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    env:
+      VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: create release branch
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git checkout -b releases/${VERSION}
+          git push origin releases/${VERSION}
+
+      - name: docker login to Yandex Cloud
+        run: |
+          echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login \
+            --username oauth \
+            --password-stdin cr.yandex
+
+      - name: build and tag docker image
+        run: |
+          docker build -t cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION} .
+          docker tag cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION} cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
+
+      - name: push docker image
+        run: |
+          docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}
+          docker push cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest
+
+      - name: create git tag
+        run: |
+          git tag ${VERSION}
+          git push origin ${VERSION}
+
+      - name: get previous release tag
+        id: prev_tag
+        run: |
+          git fetch --tags
+          TAG=$(git tag --sort=-creatordate | grep -E '^[0-9]+$' | sed -n 2p)
+          echo "PREV_TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: generate commit list
+        id: changelog
+        run: |
+          if [ -z "${{ steps.prev_tag.outputs.PREV_TAG }}" ]; then
+            COMMITS=$(git log --oneline)
+          else
+            COMMITS=$(git log ${{ steps.prev_tag.outputs.PREV_TAG }}..HEAD --oneline)
+          fi
+          echo "COMMITS:"
+          echo "$COMMITS"
+          echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: update CHANGELOG.md
+        run: |
+          PREV_TAG="${{ steps.prev_tag.outputs.PREV_TAG }}"
+          if [ -n "$PREV_TAG" ]; then
+            git fetch origin releases/$PREV_TAG:releases/$PREV_TAG || true
+            BASE_BRANCH="releases/$PREV_TAG"
+          else
+            BASE_BRANCH="main"
+          fi
+
+          git checkout $BASE_BRANCH -- CHANGELOG.md || touch CHANGELOG.md
+
+          echo "## Версия ${VERSION} - $(date +'%Y-%m-%d')" > TEMP_CHANGELOG
+          echo "${{ steps.changelog.outputs.COMMITS }}" >> TEMP_CHANGELOG
+          echo "" >> TEMP_CHANGELOG
+          cat CHANGELOG.md >> TEMP_CHANGELOG
+          mv TEMP_CHANGELOG CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "update changelog for release $VERSION"
+          git push origin releases/${VERSION}
+
+
+      - name: generate release template
+        run: |
+          echo "**Версия**: ${VERSION}" > .github/release-template.md
+          echo "**Дата**: $(date +'%Y-%m-%d')" >> .github/release-template.md
+          echo "**Автор релиза**: ${{ github.actor }}" >> .github/release-template.md
+          echo "**Коммиты с предыдущего релиза**:" >> .github/release-template.md
+          echo "${{ steps.changelog.outputs.COMMITS }}" >> .github/release-template.md
+          echo "**Docker-образ в Yandex Container Registry**: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}" >> .github/release-template.md
+
+      - name: create GitHub Issue
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "Версия ${{ env.VERSION }}"
+          content-filepath: .github/release-template.md
+          labels: release

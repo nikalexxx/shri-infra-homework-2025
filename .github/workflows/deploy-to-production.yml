@@ -1,0 +1,102 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия релиза для выкатки в продакшн"
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: check if Docker image exists
+        run: |
+          echo "${{ secrets.YC_OAUTH_TOKEN }}" | docker login \
+            --username oauth \
+            --password-stdin cr.yandex
+          
+          IMAGE_TAG="cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest"
+          echo "Checking if image $IMAGE_TAG exists..."
+          
+          if ! docker pull $IMAGE_TAG; then
+            echo "Error: Docker image $IMAGE_TAG not found in Container Registry"
+            exit 1
+          fi
+          
+          echo "Docker image $IMAGE_TAG found successfully"
+
+      - name: deploy to production VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USERNAME }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT || 22 }}
+          script: |
+            export PATH=$PATH:/home/polina/yandex-cloud/bin
+            docker stop app || true
+            docker rm app || true
+            
+            docker image prune -f
+            
+            # docker-credential-yc list || echo "Credential helper not configured"  # Можно оставить для отладки
+            
+            docker pull cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+            
+            docker run -d \
+              --name app \
+              --restart unless-stopped \
+              -p 80:3000 \
+              -e NODE_ENV=production \
+              cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest
+            
+            sleep 5
+            if ! docker ps | grep -q app; then
+              echo "Error: Container failed to start"
+              docker logs app
+              exit 1
+            fi
+            
+            echo "Application deployed successfully"
+            echo "Container ID: $(docker ps -q --filter name=app)"
+            echo "Image: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${{ github.event.inputs.version }}_latest"
+
+      - name: find release issue
+        id: find_issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+
+          ISSUE_NUMBER=$(gh issue list --state open --search "Версия ${VERSION}" --json number,title --jq '[.[] | select(.title == "Версия '"${VERSION}"'")] | .[0].number')
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "Warning: No open issue found for version ${VERSION}"
+            echo "ISSUE_NUMBER=" >> $GITHUB_OUTPUT
+          else
+            echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+          fi
+
+      - name: create deployment comment template
+        run: |
+          echo "## Релиз выкачен в продакшн" > .github/deployment-comment.md
+          echo "" >> .github/deployment-comment.md
+          echo "**Версия**: ${VERSION}" >> .github/deployment-comment.md
+          echo "**Дата выкатки**: $(date +'%Y-%m-%d %H:%M:%S UTC')" >> .github/deployment-comment.md
+          echo "**Выкатил**: @${{ github.actor }}" >> .github/deployment-comment.md
+          echo "**Docker-образ**: cr.yandex/${{ secrets.YC_CR_REGISTRY_ID }}/app:${VERSION}_latest" >> .github/deployment-comment.md
+          echo "**Статус**: Успешно развернуто" >> .github/deployment-comment.md
+          echo "" >> .github/deployment-comment.md
+          echo "---" >> .github/deployment-comment.md
+          echo "*Автоматически создано GitHub Actions*" >> .github/deployment-comment.md
+
+      - name: add comment to release issue
+        if: steps.find_issue.outputs.ISSUE_NUMBER != ''
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ steps.find_issue.outputs.ISSUE_NUMBER }}
+          body-file: .github/deployment-comment.md
