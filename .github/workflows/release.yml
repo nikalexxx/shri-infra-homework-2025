@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
+      - name: Configure YC and Docker auth
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+          export PATH="$HOME/yandex-cloud/bin:$PATH"
+          
+          echo '${{ secrets.YC_SA_KEY }}' > key.json
+          yc config set service-account-key key.json
+          yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
+          yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+          
+          IAM_TOKEN=$(yc iam create-token)
+          echo "$IAM_TOKEN" | docker login --username iam --password-stdin cr.yandex/${{ secrets.REGISTRY_ID }}
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Run checks
+        run: |
+          npm run lint
+          npm run test
+
+      - name: Create release branch
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git checkout -b releases/v${{ github.run_number }}
+          git push --set-upstream origin releases/v${{ github.run_number }}
+
+      - name: Build and push Docker image
+        run: |
+          docker buildx create --use
+          docker buildx build \
+            --platform linux/amd64 \
+            -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }} \
+            -t cr.yandex/${{ secrets.REGISTRY_ID }}/app:latest \
+            --push .
+          yc container image list --repository-name=${{ secrets.REGISTRY_ID }}/app
+
+      - name: Create version tag
+        run: |
+          git tag v${{ github.run_number }}
+          git push origin v${{ github.run_number }}
+
+      - name: Update changelog
+        run: |
+          git config --global push.default current
+          PREV_TAG=$(git describe --tags --abbrev=0 || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --oneline --no-merges | sed 's/^/- /')
+          else
+            COMMITS=$(git log $PREV_TAG..HEAD --oneline --no-merges | sed 's/^/- /')
+          fi
+          echo "## v${{ github.run_number }} ($(date +%Y-%m-%d))" > CHANGELOG.new
+          echo "$COMMITS" >> CHANGELOG.new
+          cat CHANGELOG.md >> CHANGELOG.new 2>/dev/null || true
+          mv CHANGELOG.new CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "Update CHANGELOG for v${{ github.run_number }}"
+          git push origin HEAD
+
+      - name: Create release issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --oneline --no-merges | sed 's/^/- /')
+          else
+            COMMITS=$(git log $PREV_TAG..HEAD --oneline --no-merges | sed 's/^/- /')
+          fi
+          gh issue create \
+            --title "Release v${{ github.run_number }}" \
+            --body "Version: ${{ github.run_number }}\n\nChanges:\n$COMMITS\n\nImage: cr.yandex/${{ secrets.REGISTRY_ID }}/app:${{ github.run_number }}"
