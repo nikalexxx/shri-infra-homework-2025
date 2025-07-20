@@ -7,7 +7,7 @@ describe("About", () => {
     const { container } = render(<About />);
 
     expect(container.textContent).toBe(
-      "AboutAuthor: Жадан Владислав Андреевич"
+      "AboutAuthor: Жадан Владислав Андреевич test"
     );
   });
 });
